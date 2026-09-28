@@ -1,4 +1,4 @@
-import { Application, Graphics } from "pixi.js";
+import { Application, Graphics, Text } from "pixi.js";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
@@ -19,7 +19,7 @@ type GameState = {
   muted: boolean;
 };
 
-type Phase = "idle" | "eat" | "beam" | "hit" | "victory";
+type Phase = "idle" | "take" | "eat" | "beam" | "hit" | "victory";
 type EnemyMode = "entering" | "ready" | "defeated";
 
 const enemyFightX = 248;
@@ -50,10 +50,53 @@ let enemyMode: EnemyMode = "entering";
 let enemyX = enemySpawnX;
 let audio: AudioContext | undefined;
 let sceneApp: Application | undefined;
+let productionQueue: number[] = [];
+let activeProduction: number | null = null;
+let productionProgress = 0;
+let pendingBars = 0;
+let reservedBar = false;
+let takeProgress = 0;
+let refreshing = false;
+let nativeCallQueue: Promise<void> = Promise.resolve();
+
+function updateFrameRate() {
+  if (sceneApp) sceneApp.ticker.maxFPS = game.energyBars > 0 || enemyMode === "entering" || activeProduction !== null || productionQueue.length > 0 ? 30 : 8;
+}
+
+function pileCount() {
+  return Math.max(0, game.energyBars - pendingBars - Number(reservedBar));
+}
+
+function queueProduction(tokens: number, bars: number) {
+  if (tokens <= 0) return;
+  pendingBars += bars;
+  if (bars === 0) productionQueue.push(0);
+  else {
+    const separate = Math.min(bars, 4);
+    for (let index = 0; index < separate; index++) productionQueue.push(1);
+    if (bars > separate) productionQueue.push(bars - separate);
+  }
+  updateFrameRate();
+}
+
+function advanceProduction(seconds: number) {
+  if (activeProduction === null && productionQueue.length > 0) {
+    activeProduction = productionQueue.shift()!;
+    productionProgress = 0;
+  }
+  if (activeProduction === null) return;
+  productionProgress += seconds / 0.75;
+  if (productionProgress >= 1) {
+    pendingBars -= activeProduction;
+    activeProduction = null;
+    productionProgress = 0;
+    updateFrameRate();
+  }
+}
 
 function setEnemyMode(mode: EnemyMode) {
   enemyMode = mode;
-  if (sceneApp) sceneApp.ticker.maxFPS = game.energyBars > 0 || mode === "entering" ? 30 : 8;
+  updateFrameRate();
 }
 
 function sound(kind: "eat" | "beam" | "hit" | "victory") {
@@ -80,7 +123,11 @@ const element = (id: string) => document.getElementById(id)!;
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 async function call(name: string): Promise<GameState> {
-  if (native) return invoke<GameState>(name);
+  if (native) {
+    const next = nativeCallQueue.then(() => invoke<GameState>(name));
+    nativeCallQueue = next.then(() => undefined, () => undefined);
+    return next;
+  }
   if (name === "perform_attack" && game.energyBars > 0) {
     game.energyBars--;
     game.enemyHp = Math.max(0, game.enemyHp - game.attackPower);
@@ -115,8 +162,8 @@ function showState() {
     ? new Date(game.lastRefresh).toLocaleTimeString("zh-CN")
     : "尚未刷新";
   const status = element("source-status");
-  status.textContent = game.lastError ? "读取异常" : game.connected ? "Codex 已连接" : "未发现 Codex";
-  status.className = `source-status ${game.lastError ? "error" : game.connected ? "ok" : ""}`;
+  status.textContent = !native ? "模拟模式" : game.lastError ? "读取异常" : game.connected ? "Codex 已连接" : "未发现 Codex";
+  status.className = `source-status ${!native ? "" : game.lastError ? "error" : game.connected ? "ok" : ""}`;
   const message = element("status-message");
   message.textContent = game.lastError ?? (native ? "仅在本机读取 Codex 用量记录。" : "浏览器预览：使用独立的模拟能量。" );
   message.className = game.lastError ? "error" : "";
@@ -132,16 +179,32 @@ function showState() {
   soundButton.textContent = game.muted ? "♪̸" : "♪";
   soundButton.title = game.muted ? "声音已关闭" : "声音已开启";
   soundButton.setAttribute("aria-label", soundButton.title);
-  if (sceneApp) sceneApp.ticker.maxFPS = game.energyBars > 0 || enemyMode === "entering" ? 30 : 8;
+  updateFrameRate();
 }
 
-async function refresh() {
+async function refresh(simulate = true) {
+  if (refreshing) return;
+  refreshing = true;
+  (element("refresh") as HTMLButtonElement).disabled = true;
   try {
-    game = await call("refresh_usage");
+    const oldTokens = game.totalTokens;
+    const oldRemainder = game.tokenRemainder;
+    if (!native && simulate) {
+      const tokens = 2500;
+      game.totalTokens += tokens;
+      game.energyBars += Math.floor((oldRemainder + tokens) / 1000);
+      game.tokenRemainder = (oldRemainder + tokens) % 1000;
+      game.lastRefresh = new Date().toISOString();
+    } else if (native) game = await call("refresh_usage");
+    const newTokens = Math.max(0, game.totalTokens - oldTokens);
+    queueProduction(newTokens, Math.floor((oldRemainder + newTokens) / 1000));
     showState();
   } catch (error) {
     game.lastError = String(error);
     showState();
+  } finally {
+    refreshing = false;
+    (element("refresh") as HTMLButtonElement).disabled = false;
   }
 }
 
@@ -171,8 +234,6 @@ function drawGirl(graphics: Graphics, t: number) {
   graphics.rect(12, -40, 6, 3).fill(0xf6a9a0);
   if (phase === "eat") {
     graphics.rect(-1, -39, 8, 7).fill(0xb5676c);
-    graphics.rect(13, -39, 13, 7).fill(outline);
-    graphics.rect(16, -37, 12, 4).fill(0xffd166);
   } else {
     graphics.rect(0, -37, 6, phase === "beam" ? 2 : 3).fill(0xa75668);
   }
@@ -184,9 +245,77 @@ function drawGirl(graphics: Graphics, t: number) {
     graphics.rect(17, -37, 8, 17).fill(outline);
     graphics.rect(19, -35, 5, 14).fill(0xf6dfbe);
   }
-  graphics.rect(-25, -37, 8, 17).fill(outline);
-  graphics.rect(-23, -35, 5, 14).fill(0xf6dfbe);
+  if (phase === "take") {
+    graphics.rect(-43, -39, 24, 8).fill(outline);
+    graphics.rect(-44, -37, 21, 4).fill(0xf6dfbe);
+    graphics.circle(-44, -35, 4).fill(0xf6dfbe);
+  } else if (phase === "eat") {
+    graphics.rect(-24, -42, 20, 8).fill(outline);
+    graphics.rect(-22, -40, 18, 4).fill(0xf6dfbe);
+  } else {
+    graphics.rect(-25, -37, 8, 17).fill(outline);
+    graphics.rect(-23, -35, 5, 14).fill(0xf6dfbe);
+  }
   graphics.rect(-23, -25, 8, 10).fill(0xf5b66b);
+}
+
+function drawBar(graphics: Graphics, x: number, y: number) {
+  graphics.rect(x, y, 17, 7).fill(0x25405a);
+  graphics.rect(x + 2, y + 1, 13, 5).fill(0xffd26a);
+  graphics.rect(x + 4, y + 2, 4, 3).fill(0xfff0c5);
+  graphics.rect(x + 13, y + 1, 2, 5).fill(0xf19d69);
+}
+
+function drawMachine(graphics: Graphics, t: number) {
+  graphics.clear();
+  const running = activeProduction !== null;
+  graphics.rect(0, 55, 19, 13).fill(0x243c52);
+  graphics.rect(0, 58, 18, 6).fill(0x75b5b3);
+  graphics.rect(11, 42, 45, 58).fill(0x21394f);
+  graphics.rect(14, 45, 39, 52).fill(0x5d8290);
+  graphics.rect(17, 48, 33, 20).fill(0x203a50);
+  graphics.rect(20, 51, 27, 14).fill(running ? 0x62d0bd : 0x3d6573);
+  graphics.rect(25, 55, 4, 7).fill(0x163448);
+  graphics.rect(29, 55, 4, 2).fill(0x163448);
+  graphics.rect(35, 55, 4, 7).fill(0x163448);
+  graphics.rect(33, 60, 6, 2).fill(0x163448);
+  graphics.rect(17, 73, 30, 15).fill(0x2f5264);
+  if (game.tokenRemainder > 0) graphics.rect(20, 76, Math.floor(24 * game.tokenRemainder / 1000), 5).fill(0xffd36b);
+  graphics.rect(19, 90, 7, 7).fill(0x21394f);
+  graphics.rect(41, 90, 7, 7).fill(0x21394f);
+  graphics.rect(51, 75, 15, 10).fill(0x21394f);
+  graphics.rect(54, 77, 12, 6).fill(0xabc8bd);
+  const light = running && Math.sin(t * 24) > 0 ? 0xffe488 : 0x8babb0;
+  graphics.circle(47, 71, 2).fill(light);
+  if (running && productionProgress < 0.5) {
+    const x = Math.round(-4 + productionProgress * 58);
+    graphics.rect(x, 58, 5, 5).fill(0xa0f9e1);
+    graphics.rect(x + 1, 59, 3, 3).fill(0xeaffcf);
+  }
+}
+
+function drawPile(graphics: Graphics) {
+  graphics.clear();
+  graphics.rect(64, 95, 38, 5).fill(0x263e54);
+  graphics.rect(66, 95, 34, 2).fill(0x8bb5a9);
+  const bars = Math.min(pileCount(), 9);
+  for (let index = 0; index < bars; index++) {
+    const row = Math.floor(index / 3);
+    const column = index % 3;
+    drawBar(graphics, 65 + column * 11 + (row % 2 ? 4 : 0), 88 - row * 7);
+  }
+}
+
+function drawMovingBars(graphics: Graphics) {
+  graphics.clear();
+  if (activeProduction !== null && activeProduction > 0 && productionProgress >= 0.5) {
+    const progress = (productionProgress - 0.5) * 2;
+    drawBar(graphics, Math.round(54 + progress * 20), Math.round(76 + progress * 8));
+  }
+  if (phase === "take") {
+    const eased = takeProgress * takeProgress * (3 - 2 * takeProgress);
+    drawBar(graphics, Math.round(78 + eased * 43), Math.round(79 - eased * 17));
+  } else if (phase === "eat") drawBar(graphics, 121, 62);
 }
 
 function drawRobot(graphics: Graphics, t: number) {
@@ -236,44 +365,56 @@ async function start() {
   floor.rect(2, 100, 316, 2).fill(0x8dd6bc);
   floor.rect(20, 108, 280, 4).fill(0x35576b);
   app.stage.addChild(floor);
-  const snack = new Graphics();
-  snack.rect(91, 81, 19, 7).fill(0x25405a);
-  snack.rect(93, 82, 15, 5).fill(0xffd26a);
-  snack.rect(95, 83, 4, 3).fill(0xfff0c5);
-  app.stage.addChild(snack);
+  const machine = new Graphics();
+  app.stage.addChild(machine);
+  const machineLabel = new Text({ text: "TOKEN", style: { fontFamily: "monospace", fontSize: 7, fontWeight: "bold", fill: 0xa0f9e1 } });
+  machineLabel.position.set(3, 33);
+  app.stage.addChild(machineLabel);
+  const pile = new Graphics();
+  app.stage.addChild(pile);
   const girl = new Graphics();
-  girl.position.set(83, 101);
+  girl.position.set(129, 101);
   app.stage.addChild(girl);
   const robot = new Graphics();
   robot.position.set(enemySpawnX, 101);
   app.stage.addChild(robot);
   const beam = new Graphics();
   app.stage.addChild(beam);
+  const movingBars = new Graphics();
+  app.stage.addChild(movingBars);
   app.ticker.maxFPS = 30;
   app.ticker.add((ticker) => {
     clock += ticker.deltaTime / 60;
+    advanceProduction(ticker.deltaMS / 1000);
+    if (phase === "take") takeProgress = Math.min(1, takeProgress + ticker.deltaMS / 480);
     if (enemyMode === "entering") {
       enemyX = Math.max(enemyFightX, enemyX - enemyWalkSpeed * ticker.deltaMS / 1000);
       if (enemyX === enemyFightX) setEnemyMode("ready");
     }
+    drawMachine(machine, clock);
+    drawPile(pile);
     drawGirl(girl, clock);
     drawRobot(robot, clock);
+    drawMovingBars(movingBars);
     beam.clear();
     if (phase === "beam") {
-      beam.rect(120, 69, 102, 3).fill(0x8df9df);
-      beam.rect(120, 70, 108, 1).fill(0xffffff);
+      beam.rect(166, 69, 56, 3).fill(0x8df9df);
+      beam.rect(166, 70, 62, 1).fill(0xffffff);
       beam.circle(225, 70, 6).fill(0xffeeab);
     }
-    snack.visible = game.energyBars > 0 && phase === "idle";
   });
   try { game = await call("get_game_state"); } catch (error) { game.lastError = String(error); }
   showState();
-  await refresh();
-  setInterval(refresh, 60_000);
+  await refresh(false);
+  if (native) setInterval(() => { void refresh(); }, 60_000);
   while (true) {
     if (document.hidden) { await pause(600); continue; }
     if (enemyMode !== "ready") { await pause(100); continue; }
-    if (game.energyBars === 0) { await pause(600); continue; }
+    if (pileCount() === 0) { await pause(100); continue; }
+    reservedBar = true;
+    takeProgress = 0;
+    phase = "take";
+    await pause(480);
     phase = "eat";
     sound("eat");
     await pause(550);
@@ -281,8 +422,8 @@ async function start() {
     sound("beam");
     await pause(300);
     const waveBefore = game.wave;
-    try { game = await call("perform_attack"); showState(); }
-    catch (error) { game.lastError = String(error); showState(); phase = "idle"; await pause(600); continue; }
+    try { game = await call("perform_attack"); reservedBar = false; showState(); }
+    catch (error) { reservedBar = false; game.lastError = String(error); showState(); phase = "idle"; await pause(600); continue; }
     const defeated = waveBefore !== game.wave;
     if (defeated) setEnemyMode("defeated");
     phase = defeated ? "victory" : "hit";
@@ -302,7 +443,7 @@ element("playfield").addEventListener("pointerdown", (event) => {
   if (event.button !== 0) return;
   if (native) invoke("begin_drag").catch(console.error);
 });
-element("refresh").addEventListener("click", refresh);
+element("refresh").addEventListener("click", () => { void refresh(); });
 element("details-toggle").addEventListener("click", () => {
   const details = element("details");
   details.hidden = !details.hidden;
