@@ -265,14 +265,18 @@ async function start() {
   }
 }
 
-element("drag-bar").addEventListener("pointerdown", (event) => {
-  if (event.target instanceof HTMLButtonElement) return;
+element("playfield").addEventListener("pointerdown", (event) => {
+  if (event.button !== 0) return;
   if (native) invoke("begin_drag").catch(console.error);
 });
 element("refresh").addEventListener("click", refresh);
 element("details-toggle").addEventListener("click", () => {
   const details = element("details");
   details.hidden = !details.hidden;
+  const toggle = element("details-toggle") as HTMLButtonElement;
+  toggle.textContent = details.hidden ? "⌃" : "⌄";
+  toggle.title = details.hidden ? "展开数据状态" : "收起数据状态";
+  toggle.setAttribute("aria-label", toggle.title);
 });
 element("upgrade").addEventListener("click", async () => {
   try { game = await call("purchase_upgrade"); showState(); } catch (error) { game.lastError = String(error); showState(); }
@@ -291,6 +295,18 @@ element("sound").addEventListener("click", async () => {
     showState();
   } catch (error) { game.lastError = String(error); showState(); }
 });
+element("minimize").addEventListener("click", async () => {
+  if (!native) return;
+  try {
+    await invoke("save_window_position");
+    await invoke("minimize_window");
+  } catch (error) { game.lastError = String(error); showState(); }
+});
+element("close").addEventListener("click", async () => {
+  if (!native) return;
+  try { await invoke("save_window_position"); } catch (error) { console.error(error); }
+  void invoke("quit_app").catch(console.error);
+});
 
 if (native) {
   let positionTimer: ReturnType<typeof setTimeout> | undefined;
@@ -298,6 +314,9 @@ if (native) {
     if (positionTimer) clearTimeout(positionTimer);
     positionTimer = setTimeout(() => { void invoke("save_window_position").catch(console.error); }, 500);
   }).catch(console.error);
+} else {
+  (element("minimize") as HTMLButtonElement).disabled = true;
+  (element("close") as HTMLButtonElement).disabled = true;
 }
 
 start().catch((error) => {

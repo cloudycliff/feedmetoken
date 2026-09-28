@@ -311,9 +311,20 @@ fn toggle_mute(shared: State<'_, SharedGame>) -> Result<PublicState, String> {
 
 #[tauri::command]
 fn save_window_position(window: tauri::Window, shared: State<'_, SharedGame>) -> Result<(), String> {
+    if window.is_minimized().map_err(|error| error.to_string())? { return Ok(()) }
     let position = window.outer_position().map_err(|error| error.to_string())?;
     update(&shared, |next| next.window_position = Some((position.x, position.y)))?;
     Ok(())
+}
+
+#[tauri::command]
+fn minimize_window(window: tauri::Window) -> Result<(), String> {
+    window.minimize().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn quit_app(app: tauri::AppHandle) {
+    app.exit(0);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -339,7 +350,7 @@ pub fn run() {
             let mut tray = TrayIconBuilder::new().menu(&menu).on_menu_event(|app, event| {
                 if let Some(window) = app.get_webview_window("main") {
                     match event.id().as_ref() {
-                        "show" => { let _ = window.show(); let _ = window.set_focus(); }
+                        "show" => { let _ = window.unminimize(); let _ = window.show(); let _ = window.set_focus(); }
                         "hide" => { let _ = window.hide(); }
                         "quit" => app.exit(0),
                         _ => {}
@@ -350,7 +361,7 @@ pub fn run() {
             tray.build(app)?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_game_state, refresh_usage, perform_attack, purchase_upgrade, begin_drag, toggle_always_on_top, toggle_mute, save_window_position])
+        .invoke_handler(tauri::generate_handler![get_game_state, refresh_usage, perform_attack, purchase_upgrade, begin_drag, toggle_always_on_top, toggle_mute, save_window_position, minimize_window, quit_app])
         .run(tauri::generate_context!())
         .expect("Feed Me Token failed to start");
 }

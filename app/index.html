@@ -9,22 +9,26 @@
   </head>
   <body>
     <main id="shell">
-      <header id="drag-bar">
-        <div class="brand"><span class="brand-mark">◆</span> Feed Me Token <span class="build-label">MVP</span></div>
-        <div class="window-actions">
-          <span id="source-status" class="source-status">检测中</span>
-          <button id="refresh" title="刷新 Codex 用量" aria-label="刷新 Codex 用量">↻</button>
-          <button id="pin" title="切换置顶" aria-label="切换置顶">●</button>
-          <button id="sound" title="切换声音" aria-label="切换声音">♪</button>
-          <button id="details-toggle" title="展开数据状态" aria-label="展开数据状态">⌄</button>
-        </div>
-      </header>
-      <div id="playfield" aria-label="角色与机器人的战斗场景"></div>
+      <div id="playfield" title="拖动场景可移动窗口" aria-label="可拖动的角色与机器人战斗场景"></div>
       <footer id="hud">
-        <div class="stat"><span class="stat-icon bar-icon">▰</span><span class="stat-label">能量棒</span><strong id="energy">0</strong></div>
-        <div class="stat"><span class="stat-icon coin-icon">●</span><span class="stat-label">金币</span><strong id="coins">0</strong></div>
-        <div class="stat"><span class="stat-label">LV</span><strong id="level">1</strong><span class="stat-label">波次</span><strong id="wave">1</strong></div>
-        <button id="upgrade">攻击 +1 · 5 金币</button>
+        <div class="hud-stats">
+          <div class="stat"><span class="stat-icon bar-icon">▰</span><span class="stat-label">能量棒</span><strong id="energy">0</strong></div>
+          <div class="stat"><span class="stat-icon coin-icon">●</span><span class="stat-label">金币</span><strong id="coins">0</strong></div>
+          <div class="stat"><span class="stat-label">LV</span><strong id="level">1</strong><span class="stat-label">波次</span><strong id="wave">1</strong></div>
+          <button id="upgrade" type="button">攻击 +1 · 5 金币</button>
+        </div>
+        <div class="hud-controls">
+          <span id="source-status" class="source-status">检测中</span>
+          <div class="window-actions">
+            <button id="refresh" type="button" title="刷新 Codex 用量" aria-label="刷新 Codex 用量">↻</button>
+            <button id="details-toggle" type="button" title="展开数据状态" aria-label="展开数据状态">⌃</button>
+            <button id="pin" type="button" title="切换置顶" aria-label="切换置顶">●</button>
+            <button id="sound" type="button" title="切换声音" aria-label="切换声音">♪</button>
+            <span class="control-divider" role="separator"></span>
+            <button id="minimize" type="button" title="最小化窗口" aria-label="最小化窗口">−</button>
+            <button id="close" type="button" title="退出游戏" aria-label="退出游戏">×</button>
+          </div>
+        </div>
       </footer>
       <section id="details" hidden>
         <div><span>启用后 token</span><strong id="tokens">0</strong></div>
