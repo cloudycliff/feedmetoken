@@ -1,6 +1,9 @@
 import { Application, Graphics, Text } from "pixi.js";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import gameConfig from "../game-config.json";
+
+const { rules, timing, display, preview } = gameConfig;
 
 type GameState = {
   totalTokens: number;
@@ -24,20 +27,19 @@ type EnemyMode = "entering" | "ready" | "defeated";
 
 const enemyFightX = 248;
 const enemySpawnX = 350;
-const enemyWalkSpeed = 95;
-const enemyHpForWave = (wave: number) => 1 + Math.floor((wave - 1) / 20);
+const enemyHpForWave = (wave: number) => rules.enemyBaseHp + Math.floor((wave - 1) / rules.enemyHpEveryWaves);
 
 const native = "__TAURI_INTERNALS__" in window;
 let game: GameState = {
   totalTokens: 0,
   tokenRemainder: 0,
-  energyBars: native ? 0 : 5,
+  energyBars: native ? 0 : preview.startingBars,
   coins: 0,
   xp: 0,
-  level: 1,
-  attackPower: 1,
-  wave: 1,
-  enemyHp: 1,
+  level: rules.startingLevel,
+  attackPower: rules.startingAttackPower,
+  wave: rules.startingWave,
+  enemyHp: enemyHpForWave(rules.startingWave),
   lastRefresh: null,
   lastError: null,
   connected: native,
@@ -60,7 +62,7 @@ let refreshing = false;
 let nativeCallQueue: Promise<void> = Promise.resolve();
 
 function updateFrameRate() {
-  if (sceneApp) sceneApp.ticker.maxFPS = game.energyBars > 0 || enemyMode === "entering" || activeProduction !== null || productionQueue.length > 0 ? 30 : 8;
+  if (sceneApp) sceneApp.ticker.maxFPS = game.energyBars > 0 || enemyMode === "entering" || activeProduction !== null || productionQueue.length > 0 ? timing.activeFps : timing.idleFps;
 }
 
 function pileCount() {
@@ -72,20 +74,20 @@ function queueProduction(tokens: number, bars: number) {
   pendingBars += bars;
   if (bars === 0) productionQueue.push(0);
   else {
-    const separate = Math.min(bars, 4);
+    const separate = Math.min(bars, display.individualBarsPerRefresh);
     for (let index = 0; index < separate; index++) productionQueue.push(1);
     if (bars > separate) productionQueue.push(bars - separate);
   }
   updateFrameRate();
 }
 
-function advanceProduction(seconds: number) {
+function advanceProduction(milliseconds: number) {
   if (activeProduction === null && productionQueue.length > 0) {
     activeProduction = productionQueue.shift()!;
     productionProgress = 0;
   }
   if (activeProduction === null) return;
-  productionProgress += seconds / 0.75;
+  productionProgress += milliseconds / timing.productionBatchMs;
   if (productionProgress >= 1) {
     pendingBars -= activeProduction;
     activeProduction = null;
@@ -132,19 +134,19 @@ async function call(name: string): Promise<GameState> {
     game.energyBars--;
     game.enemyHp = Math.max(0, game.enemyHp - game.attackPower);
     if (game.enemyHp === 0) {
-      game.coins++;
-      game.xp += 3;
-      while (game.xp >= game.level * 10) {
-        game.xp -= game.level * 10;
+      game.coins += rules.coinsPerDefeat;
+      game.xp += rules.xpPerDefeat;
+      while (game.xp >= game.level * rules.xpPerLevel) {
+        game.xp -= game.level * rules.xpPerLevel;
         game.level++;
       }
       game.wave++;
       game.enemyHp = enemyHpForWave(game.wave);
     }
   }
-  if (name === "purchase_upgrade" && game.coins >= game.attackPower * 5) {
-    game.coins -= game.attackPower * 5;
-    game.attackPower++;
+  if (name === "purchase_upgrade" && game.coins >= game.attackPower * rules.upgradeCostPerAttackPower) {
+    game.coins -= game.attackPower * rules.upgradeCostPerAttackPower;
+    game.attackPower += rules.attackPowerPerUpgrade;
   }
   if (name === "toggle_always_on_top") game.alwaysOnTop = !game.alwaysOnTop;
   if (name === "toggle_mute") game.muted = !game.muted;
@@ -157,7 +159,7 @@ function showState() {
   element("level").textContent = String(game.level);
   element("wave").textContent = String(game.wave);
   element("tokens").textContent = game.totalTokens.toLocaleString("zh-CN");
-  element("remainder").textContent = `${game.tokenRemainder} / 1000`;
+  element("remainder").textContent = `${game.tokenRemainder} / ${rules.tokensPerBar}`;
   element("last-refresh").textContent = game.lastRefresh
     ? new Date(game.lastRefresh).toLocaleTimeString("zh-CN")
     : "尚未刷新";
@@ -168,8 +170,8 @@ function showState() {
   message.textContent = game.lastError ?? (native ? "仅在本机读取 Codex 用量记录。" : "浏览器预览：使用独立的模拟能量。" );
   message.className = game.lastError ? "error" : "";
   const upgrade = element("upgrade") as HTMLButtonElement;
-  const price = game.attackPower * 5;
-  upgrade.textContent = `攻击 +1 · ${price} 金币`;
+  const price = game.attackPower * rules.upgradeCostPerAttackPower;
+  upgrade.textContent = `攻击 +${rules.attackPowerPerUpgrade} · ${price} 金币`;
   upgrade.disabled = game.coins < price;
   const pin = element("pin") as HTMLButtonElement;
   pin.textContent = game.alwaysOnTop ? "●" : "○";
@@ -190,14 +192,14 @@ async function refresh(simulate = true) {
     const oldTokens = game.totalTokens;
     const oldRemainder = game.tokenRemainder;
     if (!native && simulate) {
-      const tokens = 2500;
+      const tokens = preview.tokensPerRefresh;
       game.totalTokens += tokens;
-      game.energyBars += Math.floor((oldRemainder + tokens) / 1000);
-      game.tokenRemainder = (oldRemainder + tokens) % 1000;
+      game.energyBars += Math.floor((oldRemainder + tokens) / rules.tokensPerBar);
+      game.tokenRemainder = (oldRemainder + tokens) % rules.tokensPerBar;
       game.lastRefresh = new Date().toISOString();
     } else if (native) game = await call("refresh_usage");
     const newTokens = Math.max(0, game.totalTokens - oldTokens);
-    queueProduction(newTokens, Math.floor((oldRemainder + newTokens) / 1000));
+    queueProduction(newTokens, Math.floor((oldRemainder + newTokens) / rules.tokensPerBar));
     showState();
   } catch (error) {
     game.lastError = String(error);
@@ -280,7 +282,7 @@ function drawMachine(graphics: Graphics, t: number) {
   graphics.rect(35, 55, 4, 7).fill(0x163448);
   graphics.rect(33, 60, 6, 2).fill(0x163448);
   graphics.rect(17, 73, 30, 15).fill(0x2f5264);
-  if (game.tokenRemainder > 0) graphics.rect(20, 76, Math.floor(24 * game.tokenRemainder / 1000), 5).fill(0xffd36b);
+  if (game.tokenRemainder > 0) graphics.rect(20, 76, Math.max(1, Math.floor(24 * game.tokenRemainder / rules.tokensPerBar)), 5).fill(0xffd36b);
   graphics.rect(19, 90, 7, 7).fill(0x21394f);
   graphics.rect(41, 90, 7, 7).fill(0x21394f);
   graphics.rect(51, 75, 15, 10).fill(0x21394f);
@@ -298,7 +300,7 @@ function drawPile(graphics: Graphics) {
   graphics.clear();
   graphics.rect(64, 95, 38, 5).fill(0x263e54);
   graphics.rect(66, 95, 34, 2).fill(0x8bb5a9);
-  const bars = Math.min(pileCount(), 9);
+  const bars = Math.min(pileCount(), display.maxPileBars);
   for (let index = 0; index < bars; index++) {
     const row = Math.floor(index / 3);
     const column = index % 3;
@@ -382,13 +384,13 @@ async function start() {
   app.stage.addChild(beam);
   const movingBars = new Graphics();
   app.stage.addChild(movingBars);
-  app.ticker.maxFPS = 30;
+  app.ticker.maxFPS = timing.activeFps;
   app.ticker.add((ticker) => {
     clock += ticker.deltaTime / 60;
-    advanceProduction(ticker.deltaMS / 1000);
-    if (phase === "take") takeProgress = Math.min(1, takeProgress + ticker.deltaMS / 480);
+    advanceProduction(ticker.deltaMS);
+    if (phase === "take") takeProgress = Math.min(1, takeProgress + ticker.deltaMS / timing.takeMs);
     if (enemyMode === "entering") {
-      enemyX = Math.max(enemyFightX, enemyX - enemyWalkSpeed * ticker.deltaMS / 1000);
+      enemyX = Math.max(enemyFightX, enemyX - timing.enemyWalkPixelsPerSecond * ticker.deltaMS / 1000);
       if (enemyX === enemyFightX) setEnemyMode("ready");
     }
     drawMachine(machine, clock);
@@ -406,7 +408,7 @@ async function start() {
   try { game = await call("get_game_state"); } catch (error) { game.lastError = String(error); }
   showState();
   await refresh(false);
-  if (native) setInterval(() => { void refresh(); }, 60_000);
+  if (native) setInterval(() => { void refresh(); }, timing.usageRefreshMs);
   while (true) {
     if (document.hidden) { await pause(600); continue; }
     if (enemyMode !== "ready") { await pause(100); continue; }
@@ -414,13 +416,13 @@ async function start() {
     reservedBar = true;
     takeProgress = 0;
     phase = "take";
-    await pause(480);
+    await pause(timing.takeMs);
     phase = "eat";
     sound("eat");
-    await pause(550);
+    await pause(timing.eatMs);
     phase = "beam";
     sound("beam");
-    await pause(300);
+    await pause(timing.beamMs);
     const waveBefore = game.wave;
     try { game = await call("perform_attack"); reservedBar = false; showState(); }
     catch (error) { reservedBar = false; game.lastError = String(error); showState(); phase = "idle"; await pause(600); continue; }
@@ -428,14 +430,14 @@ async function start() {
     if (defeated) setEnemyMode("defeated");
     phase = defeated ? "victory" : "hit";
     sound(defeated ? "victory" : "hit");
-    await pause(defeated ? 320 : 250);
+    await pause(defeated ? timing.defeatMs : timing.hitMs);
     phase = "idle";
     if (defeated) {
       enemyX = enemySpawnX;
       setEnemyMode("entering");
       continue;
     }
-    await pause(220);
+    await pause(timing.retryAfterHitMs);
   }
 }
 

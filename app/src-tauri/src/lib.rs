@@ -1,4 +1,7 @@
+mod config;
+
 use chrono::{DateTime, Utc};
+use config::rules;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{self, File};
@@ -55,10 +58,10 @@ impl Default for GameState {
             energy_bars: 0,
             coins: 0,
             xp: 0,
-            level: 1,
-            attack_power: 1,
-            wave: 1,
-            enemy_hp: 1,
+            level: rules().starting_level,
+            attack_power: rules().starting_attack_power,
+            wave: rules().starting_wave,
+            enemy_hp: enemy_hp_for_wave(rules().starting_wave),
             last_refresh: None,
             last_error: None,
             always_on_top: true,
@@ -69,7 +72,14 @@ impl Default for GameState {
 }
 
 fn enemy_hp_for_wave(wave: u64) -> u64 {
-    1 + wave.saturating_sub(1) / 20
+    rules().enemy_base_hp.saturating_add(wave.saturating_sub(1) / rules().enemy_hp_every_waves)
+}
+
+fn credit_tokens(game: &mut GameState, tokens: u64) {
+    game.total_tokens = game.total_tokens.saturating_add(tokens);
+    let convertible = game.token_remainder.saturating_add(tokens);
+    game.energy_bars = game.energy_bars.saturating_add(convertible / rules().tokens_per_bar);
+    game.token_remainder = convertible % rules().tokens_per_bar;
 }
 
 fn normalize_enemy_hp(mut game: GameState) -> GameState {
@@ -256,10 +266,7 @@ fn refresh_usage(shared: State<'_, SharedGame>) -> Result<PublicState, String> {
             Ok(tokens) => {
                 next.session_highwater = scanned.session_highwater;
                 next.file_stamps = scanned.file_stamps;
-                next.total_tokens = next.total_tokens.saturating_add(tokens);
-                let convertible = next.token_remainder.saturating_add(tokens);
-                next.energy_bars = next.energy_bars.saturating_add(convertible / 1000);
-                next.token_remainder = convertible % 1000;
+                credit_tokens(next, tokens);
                 next.last_error = None;
             }
             Err(error) => next.last_error = Some(error),
@@ -275,13 +282,13 @@ fn perform_attack(shared: State<'_, SharedGame>) -> Result<PublicState, String> 
         next.energy_bars -= 1;
         next.enemy_hp = next.enemy_hp.saturating_sub(next.attack_power);
         if next.enemy_hp == 0 {
-            next.coins += 1;
-            next.xp += 3;
-            while next.xp >= next.level * 10 {
-                next.xp -= next.level * 10;
-                next.level += 1;
+            next.coins = next.coins.saturating_add(rules().coins_per_defeat);
+            next.xp = next.xp.saturating_add(rules().xp_per_defeat);
+            while next.xp >= next.level.saturating_mul(rules().xp_per_level) {
+                next.xp -= next.level.saturating_mul(rules().xp_per_level);
+                next.level = next.level.saturating_add(1);
             }
-            next.wave += 1;
+            next.wave = next.wave.saturating_add(1);
             next.enemy_hp = enemy_hp_for_wave(next.wave);
         }
     })
@@ -290,10 +297,10 @@ fn perform_attack(shared: State<'_, SharedGame>) -> Result<PublicState, String> 
 #[tauri::command]
 fn purchase_upgrade(shared: State<'_, SharedGame>) -> Result<PublicState, String> {
     update(&shared, |next| {
-        let price = next.attack_power * 5;
+        let price = next.attack_power.saturating_mul(rules().upgrade_cost_per_attack_power);
         if next.coins >= price {
             next.coins -= price;
-            next.attack_power += 1;
+            next.attack_power = next.attack_power.saturating_add(rules().attack_power_per_upgrade);
         }
     })
 }
@@ -460,13 +467,26 @@ mod tests {
     }
 
     #[test]
-    fn early_enemies_are_one_hit_and_old_saves_are_rebalanced() {
-        assert_eq!(enemy_hp_for_wave(1), 1);
-        assert_eq!(enemy_hp_for_wave(20), 1);
-        assert_eq!(enemy_hp_for_wave(21), 2);
+    fn configured_enemy_hp_and_old_saves_are_rebalanced() {
+        let interval = rules().enemy_hp_every_waves;
+        assert_eq!(enemy_hp_for_wave(1), rules().enemy_base_hp);
+        assert_eq!(enemy_hp_for_wave(interval), rules().enemy_base_hp);
+        assert_eq!(enemy_hp_for_wave(interval + 1), rules().enemy_base_hp + 1);
         let mut old = GameState::default();
-        old.wave = 34;
-        old.enemy_hp = 5;
-        assert_eq!(normalize_enemy_hp(old).enemy_hp, 2);
+        old.wave = interval + 1;
+        old.enemy_hp = enemy_hp_for_wave(old.wave) + 3;
+        assert_eq!(normalize_enemy_hp(old).enemy_hp, rules().enemy_base_hp + 1);
+    }
+
+    #[test]
+    fn configured_token_threshold_carries_remainder() {
+        let threshold = rules().tokens_per_bar;
+        let mut game = GameState::default();
+        credit_tokens(&mut game, threshold - 1);
+        assert_eq!((game.energy_bars, game.token_remainder), (0, threshold - 1));
+        credit_tokens(&mut game, 1);
+        assert_eq!((game.energy_bars, game.token_remainder), (1, 0));
+        credit_tokens(&mut game, threshold * 2 + 5);
+        assert_eq!((game.energy_bars, game.token_remainder), (3, 5));
     }
 }

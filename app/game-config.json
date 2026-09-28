@@ -1,0 +1,36 @@
+{
+  "rules": {
+    "tokensPerBar": 1000,
+    "startingLevel": 1,
+    "startingAttackPower": 1,
+    "startingWave": 1,
+    "enemyBaseHp": 1,
+    "enemyHpEveryWaves": 20,
+    "coinsPerDefeat": 1,
+    "xpPerDefeat": 3,
+    "xpPerLevel": 10,
+    "upgradeCostPerAttackPower": 5,
+    "attackPowerPerUpgrade": 1
+  },
+  "timing": {
+    "usageRefreshMs": 60000,
+    "enemyWalkPixelsPerSecond": 95,
+    "productionBatchMs": 750,
+    "takeMs": 480,
+    "eatMs": 550,
+    "beamMs": 300,
+    "defeatMs": 320,
+    "hitMs": 250,
+    "retryAfterHitMs": 220,
+    "activeFps": 30,
+    "idleFps": 8
+  },
+  "display": {
+    "individualBarsPerRefresh": 4,
+    "maxPileBars": 9
+  },
+  "preview": {
+    "startingBars": 5,
+    "tokensPerRefresh": 2500
+  }
+}

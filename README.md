@@ -46,6 +46,8 @@ cargo test
 
 Windows 安装包可在 Windows 开发机上用 `cd app && npm run tauri build -- --bundles nsis` 构建。macOS 包需要在 Mac 上构建和验证。
 
+玩法数值、生产与战斗节奏、浏览器预览参数统一写在 [`app/game-config.json`](app/game-config.json)。修改后运行 `cd app && npm run check:config`，再重新构建应用；字段含义和旧存档影响见[配置说明](docs/配置说明.md)。
+
 ## 数据与隐私
 
 - MVP 只支持 **Codex**。Rust 模块只读扫描 `CODEX_HOME`（如已设置）或默认的 `~/.codex` 下的 `sessions`、`archived_sessions` 日志。
@@ -61,6 +63,7 @@ Windows 安装包可在 Windows 开发机上用 `cd app && npm run tauri build -
 | [`app/`](app/) | 应用源码、依赖锁文件及运行说明 |
 | [`docs/Feed-Me-Token-MVP-实施文档.md`](docs/Feed-Me-Token-MVP-实施文档.md) | MVP 规则、技术方案、验收标准与当前验证结果 |
 | [`docs/开发记录.md`](docs/开发记录.md) | 决策变更、实现状态、验证结果与后续遗留事项 |
+| [`docs/配置说明.md`](docs/配置说明.md) | 玩法数值配置项、单位、校验规则与存档影响 |
 | [`docs/Feed-Me-Token-MVP-设计草案.md`](docs/Feed-Me-Token-MVP-设计草案.md) | 产品范围与玩法设计过程 |
 | [`docs/Feed-Me-Token-角色美术设定.md`](docs/Feed-Me-Token-角色美术设定.md) | 主角、机器人与动作的原创美术方向 |
 
