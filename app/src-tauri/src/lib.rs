@@ -58,7 +58,7 @@ impl Default for GameState {
             level: 1,
             attack_power: 1,
             wave: 1,
-            enemy_hp: 3,
+            enemy_hp: 1,
             last_refresh: None,
             last_error: None,
             always_on_top: true,
@@ -66,6 +66,15 @@ impl Default for GameState {
             window_position: None,
         }
     }
+}
+
+fn enemy_hp_for_wave(wave: u64) -> u64 {
+    1 + wave.saturating_sub(1) / 20
+}
+
+fn normalize_enemy_hp(mut game: GameState) -> GameState {
+    game.enemy_hp = game.enemy_hp.clamp(1, enemy_hp_for_wave(game.wave));
+    game
 }
 
 #[derive(Serialize)]
@@ -141,19 +150,19 @@ fn save_game(path: &Path, game: &GameState) -> Result<(), String> {
 fn load_game(path: &Path, legacy_path: &Path) -> Result<GameState, String> {
     if path.exists() {
         let bytes = fs::read(path).map_err(|error| error.to_string())?;
-        if let Ok(game) = serde_json::from_slice(&bytes) { return Ok(game) }
+        if let Ok(game) = serde_json::from_slice(&bytes) { return Ok(normalize_enemy_hp(game)) }
         let backup = fs::read(path.with_extension("json.bak"))
             .map_err(|error| format!("存档损坏且无法读取备份：{error}"))?;
         let game = serde_json::from_slice(&backup)
             .map_err(|error| format!("存档与备份均损坏：{error}"))?;
         write_atomic(path, &backup)?;
-        return Ok(game);
+        return Ok(normalize_enemy_hp(game));
     }
     if legacy_path.exists() {
         let bytes = fs::read(legacy_path).map_err(|error| error.to_string())?;
         let game = serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
         write_atomic(path, &bytes)?;
-        return Ok(game);
+        return Ok(normalize_enemy_hp(game));
     }
     Ok(GameState::default())
 }
@@ -273,7 +282,7 @@ fn perform_attack(shared: State<'_, SharedGame>) -> Result<PublicState, String> 
                 next.level += 1;
             }
             next.wave += 1;
-            next.enemy_hp = 3 + (next.wave - 1) / 10;
+            next.enemy_hp = enemy_hp_for_wave(next.wave);
         }
     })
 }
@@ -448,5 +457,16 @@ mod tests {
         assert_eq!(load_game(&current, &legacy).unwrap().coins, 7);
         assert_eq!(load_game(&current, &legacy).unwrap().coins, 7);
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn early_enemies_are_one_hit_and_old_saves_are_rebalanced() {
+        assert_eq!(enemy_hp_for_wave(1), 1);
+        assert_eq!(enemy_hp_for_wave(20), 1);
+        assert_eq!(enemy_hp_for_wave(21), 2);
+        let mut old = GameState::default();
+        old.wave = 34;
+        old.enemy_hp = 5;
+        assert_eq!(normalize_enemy_hp(old).enemy_hp, 2);
     }
 }

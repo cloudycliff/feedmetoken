@@ -20,6 +20,12 @@ type GameState = {
 };
 
 type Phase = "idle" | "eat" | "beam" | "hit" | "victory";
+type EnemyMode = "entering" | "ready" | "defeated";
+
+const enemyFightX = 248;
+const enemySpawnX = 350;
+const enemyWalkSpeed = 95;
+const enemyHpForWave = (wave: number) => 1 + Math.floor((wave - 1) / 20);
 
 const native = "__TAURI_INTERNALS__" in window;
 let game: GameState = {
@@ -31,7 +37,7 @@ let game: GameState = {
   level: 1,
   attackPower: 1,
   wave: 1,
-  enemyHp: 3,
+  enemyHp: 1,
   lastRefresh: null,
   lastError: null,
   connected: native,
@@ -40,9 +46,15 @@ let game: GameState = {
 };
 let phase: Phase = "idle";
 let clock = 0;
-let lastWave = 1;
+let enemyMode: EnemyMode = "entering";
+let enemyX = enemySpawnX;
 let audio: AudioContext | undefined;
 let sceneApp: Application | undefined;
+
+function setEnemyMode(mode: EnemyMode) {
+  enemyMode = mode;
+  if (sceneApp) sceneApp.ticker.maxFPS = game.energyBars > 0 || mode === "entering" ? 30 : 8;
+}
 
 function sound(kind: "eat" | "beam" | "hit" | "victory") {
   if (game.muted) return;
@@ -80,7 +92,7 @@ async function call(name: string): Promise<GameState> {
         game.level++;
       }
       game.wave++;
-      game.enemyHp = 3 + Math.floor((game.wave - 1) / 10);
+      game.enemyHp = enemyHpForWave(game.wave);
     }
   }
   if (name === "purchase_upgrade" && game.coins >= game.attackPower * 5) {
@@ -120,7 +132,7 @@ function showState() {
   soundButton.textContent = game.muted ? "♪̸" : "♪";
   soundButton.title = game.muted ? "声音已关闭" : "声音已开启";
   soundButton.setAttribute("aria-label", soundButton.title);
-  if (sceneApp) sceneApp.ticker.maxFPS = game.energyBars > 0 ? 30 : 8;
+  if (sceneApp) sceneApp.ticker.maxFPS = game.energyBars > 0 || enemyMode === "entering" ? 30 : 8;
 }
 
 async function refresh() {
@@ -179,19 +191,26 @@ function drawGirl(graphics: Graphics, t: number) {
 
 function drawRobot(graphics: Graphics, t: number) {
   graphics.clear();
-  graphics.y = 101 + (phase === "hit" ? Math.sin(t * 55) * 2 : Math.sin(t * 2) * 0.5);
+  const walking = enemyMode === "entering";
+  const stride = walking ? Math.round(Math.sin(t * 16) * 3) : 0;
+  graphics.x = Math.round(enemyX);
+  graphics.y = 101 + (phase === "hit" ? Math.sin(t * 55) * 2 : walking ? Math.abs(stride) * 0.4 : Math.sin(t * 2) * 0.5);
+  graphics.alpha = enemyMode === "defeated" ? 0.55 : 1;
+  graphics.scale.y = enemyMode === "defeated" ? 0.75 : 1;
   const edge = 0x1d354e;
   graphics.ellipse(0, 2, 25, 4).fill({ color: 0x102638, alpha: 0.25 });
-  graphics.rect(-17, -18, 12, 18).fill(edge);
-  graphics.rect(5, -18, 12, 18).fill(edge);
+  graphics.rect(-17 + stride, -18, 12, 18).fill(edge);
+  graphics.rect(5 - stride, -18, 12, 18).fill(edge);
   graphics.rect(-16, -38, 32, 24).fill(edge);
   graphics.rect(-13, -35, 26, 18).fill(0x76849c);
   graphics.rect(-25, -36, 9, 21).fill(edge);
   graphics.rect(16, -36, 9, 21).fill(edge);
   graphics.rect(-28, -66, 56, 31).fill(edge);
   graphics.rect(-24, -62, 48, 23).fill(phase === "hit" ? 0xd8f9ea : 0x627ca1);
-  graphics.rect(-20, -59, 40, 17).fill(phase === "hit" ? 0xe9a3ae : 0x263f5e);
-  if (phase === "hit") {
+  graphics.rect(-20, -59, 40, 17).fill(enemyMode === "defeated" ? 0x172b3d : phase === "hit" ? 0xe9a3ae : 0x263f5e);
+  if (enemyMode === "defeated") {
+    graphics.rect(-12, -51, 24, 2).fill(0x6b8791);
+  } else if (phase === "hit") {
     for (let index = 0; index < 5; index++) {
       graphics.rect(-16 + index * 8, -57 + (index % 2) * 7, 5, 3).fill(index % 2 ? 0xffe68a : 0x90f5df);
     }
@@ -226,13 +245,17 @@ async function start() {
   girl.position.set(83, 101);
   app.stage.addChild(girl);
   const robot = new Graphics();
-  robot.position.set(248, 101);
+  robot.position.set(enemySpawnX, 101);
   app.stage.addChild(robot);
   const beam = new Graphics();
   app.stage.addChild(beam);
   app.ticker.maxFPS = 30;
   app.ticker.add((ticker) => {
     clock += ticker.deltaTime / 60;
+    if (enemyMode === "entering") {
+      enemyX = Math.max(enemyFightX, enemyX - enemyWalkSpeed * ticker.deltaMS / 1000);
+      if (enemyX === enemyFightX) setEnemyMode("ready");
+    }
     drawGirl(girl, clock);
     drawRobot(robot, clock);
     beam.clear();
@@ -248,20 +271,30 @@ async function start() {
   await refresh();
   setInterval(refresh, 60_000);
   while (true) {
-    if (game.energyBars === 0 || document.hidden) { await pause(600); continue; }
+    if (document.hidden) { await pause(600); continue; }
+    if (enemyMode !== "ready") { await pause(100); continue; }
+    if (game.energyBars === 0) { await pause(600); continue; }
     phase = "eat";
     sound("eat");
     await pause(550);
     phase = "beam";
     sound("beam");
     await pause(300);
-    lastWave = game.wave;
-    try { game = await call("perform_attack"); showState(); } catch (error) { game.lastError = String(error); showState(); }
-    phase = lastWave !== game.wave ? "victory" : "hit";
-    sound(lastWave !== game.wave ? "victory" : "hit");
-    await pause(lastWave !== game.wave ? 750 : 350);
+    const waveBefore = game.wave;
+    try { game = await call("perform_attack"); showState(); }
+    catch (error) { game.lastError = String(error); showState(); phase = "idle"; await pause(600); continue; }
+    const defeated = waveBefore !== game.wave;
+    if (defeated) setEnemyMode("defeated");
+    phase = defeated ? "victory" : "hit";
+    sound(defeated ? "victory" : "hit");
+    await pause(defeated ? 320 : 250);
     phase = "idle";
-    await pause(400);
+    if (defeated) {
+      enemyX = enemySpawnX;
+      setEnemyMode("entering");
+      continue;
+    }
+    await pause(220);
   }
 }
 
