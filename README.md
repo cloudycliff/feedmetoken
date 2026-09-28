@@ -60,6 +60,7 @@ Windows 安装包可在 Windows 开发机上用 `cd app && npm run tauri build -
 | --- | --- |
 | [`app/`](app/) | 应用源码、依赖锁文件及运行说明 |
 | [`docs/Feed-Me-Token-MVP-实施文档.md`](docs/Feed-Me-Token-MVP-实施文档.md) | MVP 规则、技术方案、验收标准与当前验证结果 |
+| [`docs/开发记录.md`](docs/开发记录.md) | 决策变更、实现状态、验证结果与后续遗留事项 |
 | [`docs/Feed-Me-Token-MVP-设计草案.md`](docs/Feed-Me-Token-MVP-设计草案.md) | 产品范围与玩法设计过程 |
 | [`docs/Feed-Me-Token-角色美术设定.md`](docs/Feed-Me-Token-角色美术设定.md) | 主角、机器人与动作的原创美术方向 |
 
