@@ -69,6 +69,16 @@ for (const item of catalog.skins) {
   for (const effect of ["beam", "token", "progress"]) {
     verify(validColor(manifest.effects?.[effect]), `${item.id} 的 ${effect} 颜色无效`);
   }
+  if (manifest.idleIllustration) {
+    const { asset, displayHeight } = manifest.idleIllustration;
+    verify(typeof asset === "string" && /^[a-z0-9-]+\.png$/.test(asset)
+      && Number.isFinite(displayHeight) && displayHeight > 0 && displayHeight <= 128,
+    `${item.id} 的待机插画配置无效`);
+    const illustration = readFileSync(join(folder, asset));
+    verify(illustration.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+      && illustration.readUInt32BE(16) > 0 && illustration.readUInt32BE(20) > 0,
+    `${item.id} 的待机插画不是有效 PNG`);
+  }
 }
 verify(ids.has(catalog.defaultSkin), "默认皮肤不在目录中");
 console.log(`皮肤资源校验通过（${ids.size} 套）`);

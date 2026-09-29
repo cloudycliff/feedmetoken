@@ -14,6 +14,7 @@ export type SkinManifest = {
   frames: Record<string, [number, number, number, number]>;
   objects: { floor: string; tray: string; bar: string };
   anchors: { girl: [number, number]; robot: [number, number] };
+  idleIllustration?: { asset: string; displayHeight: number };
   animations: {
     girl: Record<"idle" | "take" | "eat" | "beam" | "hit" | "victory", Animation>;
     robot: Record<"entering" | "ready" | "hit" | "defeated", Animation>;
@@ -26,6 +27,7 @@ export type LoadedSkin = {
   manifest: SkinManifest;
   textures: Record<string, Texture>;
   colors: { beam: number; token: number; progress: number };
+  idleIllustration?: { texture: Texture; displayHeight: number };
 };
 
 const skinCache = new Map<string, Promise<LoadedSkin>>();
@@ -96,6 +98,12 @@ function validateManifest(manifest: SkinManifest, id: string, width: number, hei
       throw new Error(`${id} 的 ${group} 锚点配置无效`);
     }
   }
+  if (manifest.idleIllustration && (!safeFile.test(manifest.idleIllustration.asset)
+    || !Number.isFinite(manifest.idleIllustration.displayHeight)
+    || manifest.idleIllustration.displayHeight <= 0
+    || manifest.idleIllustration.displayHeight > 128)) {
+    throw new Error(`${id} 的待机插画配置无效`);
+  }
   color(manifest.effects.beam);
   color(manifest.effects.token);
   color(manifest.effects.progress);
@@ -114,9 +122,16 @@ export async function loadSkin(catalog: SkinCatalog, id: string): Promise<Loaded
       for (const [name, [x, y, width, height]] of Object.entries(manifest.frames)) {
         textures[name] = new Texture({ source: atlas.source, frame: new Rectangle(x, y, width, height) });
       }
+      const illustration = manifest.idleIllustration
+        ? await Assets.load<Texture>(`/skins/${id}/${manifest.idleIllustration.asset}`)
+        : undefined;
+      if (illustration) illustration.source.scaleMode = "linear";
       return {
         manifest,
         textures,
+        idleIllustration: illustration
+          ? { texture: illustration, displayHeight: manifest.idleIllustration!.displayHeight }
+          : undefined,
         colors: {
           beam: color(manifest.effects.beam),
           token: color(manifest.effects.token),

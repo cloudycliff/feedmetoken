@@ -1,4 +1,4 @@
-import { Application, Graphics, Sprite, Text } from "pixi.js";
+import { Application, Graphics, Sprite, Text, Texture } from "pixi.js";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import gameConfig from "../game-config.json";
@@ -226,7 +226,7 @@ async function refresh(simulate = true) {
 
 async function start() {
   const app = new Application();
-  await app.init({ width: 320, height: 128, backgroundAlpha: 0, antialias: false, resolution: 1, autoDensity: false });
+  await app.init({ width: 320, height: 128, backgroundAlpha: 0, antialias: true, resolution: 2, autoDensity: false });
   sceneApp = app;
   try { game = await call("get_game_state"); } catch (error) { game.lastError = String(error); }
   const catalog = await loadSkinCatalog();
@@ -264,6 +264,10 @@ async function start() {
   const girl = new Sprite(animationFrame(skin, "girl", "idle", 0));
   girl.position.set(129, 101);
   app.stage.addChild(girl);
+  const girlIllustration = new Sprite(Texture.EMPTY);
+  girlIllustration.anchor.set(0.5, 1);
+  girlIllustration.position.set(129, 101);
+  app.stage.addChild(girlIllustration);
   const robot = new Sprite(animationFrame(skin, "robot", "entering", 0));
   robot.position.set(enemySpawnX, 101);
   app.stage.addChild(robot);
@@ -282,6 +286,11 @@ async function start() {
     tray.texture = skin.textures[skin.manifest.objects.tray];
     machine.texture = animationFrame(skin, "machine", "idle", 0);
     girl.texture = animationFrame(skin, "girl", "idle", 0);
+    girlIllustration.texture = skin.idleIllustration?.texture ?? Texture.EMPTY;
+    if (skin.idleIllustration) {
+      const scale = skin.idleIllustration.displayHeight / skin.idleIllustration.texture.height;
+      girlIllustration.scale.set(scale);
+    }
     robot.texture = animationFrame(skin, "robot", "ready", 0);
     const [girlX, girlY] = skin.manifest.anchors.girl;
     const [robotX, robotY] = skin.manifest.anchors.robot;
@@ -337,6 +346,9 @@ async function start() {
     });
     girl.texture = animationFrame(skin, "girl", phase, phaseElapsedMs / 1000, phase === "idle");
     girl.y = 101 + (phase === "idle" ? Math.sin(clock * 3) * 1.2 : 0);
+    girlIllustration.visible = phase === "idle" && !!skin.idleIllustration;
+    girlIllustration.y = girl.y;
+    girl.visible = !girlIllustration.visible;
     robot.texture = animationFrame(skin, "robot", enemyMode === "defeated" ? "defeated" : phase === "hit" ? "hit" : enemyMode, clock);
     const stride = enemyMode === "entering" ? Math.round(Math.sin(clock * 16) * 3) : 0;
     robot.position.set(Math.round(enemyX), 101 + (phase === "hit" ? Math.sin(clock * 55) * 2 : enemyMode === "entering" ? Math.abs(stride) * 0.4 : Math.sin(clock * 2) * 0.5));

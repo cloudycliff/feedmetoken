@@ -32,7 +32,7 @@ button { font: inherit; cursor: pointer; }
   display: block;
   width: 640px;
   height: 256px;
-  image-rendering: pixelated;
+  image-rendering: auto;
   pointer-events: none;
 }
 
