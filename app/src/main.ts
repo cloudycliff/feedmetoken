@@ -2,7 +2,7 @@ import { Application, Graphics, Sprite, Text, Texture } from "pixi.js";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import gameConfig from "../game-config.json";
-import { animationFrame, loadSkin, loadSkinCatalog, type LoadedSkin } from "./skins";
+import { animationFrame, illustrationFrame, loadSkin, loadSkinCatalog, type LoadedSkin } from "./skins";
 
 const { rules, timing, display, preview } = gameConfig;
 
@@ -265,7 +265,6 @@ async function start() {
   girl.position.set(129, 101);
   app.stage.addChild(girl);
   const girlIllustration = new Sprite(Texture.EMPTY);
-  girlIllustration.anchor.set(0.5, 1);
   girlIllustration.position.set(129, 101);
   app.stage.addChild(girlIllustration);
   const robot = new Sprite(animationFrame(skin, "robot", "entering", 0));
@@ -286,9 +285,12 @@ async function start() {
     tray.texture = skin.textures[skin.manifest.objects.tray];
     machine.texture = animationFrame(skin, "machine", "idle", 0);
     girl.texture = animationFrame(skin, "girl", "idle", 0);
-    girlIllustration.texture = skin.idleIllustration?.texture ?? Texture.EMPTY;
-    if (skin.idleIllustration) {
-      const scale = skin.idleIllustration.displayHeight / skin.idleIllustration.texture.height;
+    girlIllustration.texture = skin.illustration ? illustrationFrame(skin, "idle", 0) : Texture.EMPTY;
+    if (skin.illustration) {
+      const { displayHeight, anchor, frames } = skin.illustration.manifest;
+      const [,, frameWidth, frameHeight] = Object.values(frames)[0];
+      girlIllustration.anchor.set(anchor[0] / frameWidth, anchor[1] / frameHeight);
+      const scale = displayHeight / frameHeight;
       girlIllustration.scale.set(scale);
     }
     robot.texture = animationFrame(skin, "robot", "ready", 0);
@@ -346,7 +348,8 @@ async function start() {
     });
     girl.texture = animationFrame(skin, "girl", phase, phaseElapsedMs / 1000, phase === "idle");
     girl.y = 101 + (phase === "idle" ? Math.sin(clock * 3) * 1.2 : 0);
-    girlIllustration.visible = phase === "idle" && !!skin.idleIllustration;
+    girlIllustration.visible = !!skin.illustration;
+    if (skin.illustration) girlIllustration.texture = illustrationFrame(skin, phase, phaseElapsedMs / 1000, phase === "idle");
     girlIllustration.y = girl.y;
     girl.visible = !girlIllustration.visible;
     robot.texture = animationFrame(skin, "robot", enemyMode === "defeated" ? "defeated" : phase === "hit" ? "hit" : enemyMode, clock);
@@ -359,16 +362,27 @@ async function start() {
       const progress = (productionProgress - 0.5) * 2;
       producedBar.position.set(Math.round(54 + progress * 20), Math.round(76 + progress * 8));
     }
-    takenBar.visible = phase === "take" || (phase === "eat" && phaseElapsedMs < timing.eatMs / 2);
+    takenBar.visible = phase === "take" || (!skin.illustration && phase === "eat" && phaseElapsedMs < timing.eatMs / 2);
     if (phase === "take") {
       const eased = takeProgress * takeProgress * (3 - 2 * takeProgress);
-      takenBar.position.set(Math.round(78 + eased * 43), Math.round(79 - eased * 17));
+      const endX = skin.illustration
+        ? girl.x + skin.illustration.manifest.interactions.takeBarEndOffset[0] : 121;
+      const endY = skin.illustration
+        ? girl.y + skin.illustration.manifest.interactions.takeBarEndOffset[1] : 62;
+      takenBar.position.set(
+        Math.round(78 + eased * (endX - 78)),
+        Math.round(79 + eased * (endY - 79)),
+      );
     } else if (phase === "eat") takenBar.position.set(121, 62);
     beam.clear();
     if (phase === "beam" && phaseElapsedMs >= timing.beamMs / 2) {
-      beam.rect(166, 69, 56, 3).fill(skin.colors.beam);
-      beam.rect(166, 70, 62, 1).fill(0xffffff);
-      beam.circle(225, 70, 6).fill(0xffeeab);
+      const startX = skin.illustration
+        ? girl.x + skin.illustration.manifest.interactions.beamStartOffset[0] : 166;
+      const startY = skin.illustration
+        ? girl.y + skin.illustration.manifest.interactions.beamStartOffset[1] : 69;
+      beam.rect(startX, startY, 222 - startX, 3).fill(skin.colors.beam);
+      beam.rect(startX, startY + 1, 228 - startX, 1).fill(0xffffff);
+      beam.circle(225, startY + 1, 6).fill(0xffeeab);
     }
   });
   showState();

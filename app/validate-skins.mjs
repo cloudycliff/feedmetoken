@@ -69,15 +69,44 @@ for (const item of catalog.skins) {
   for (const effect of ["beam", "token", "progress"]) {
     verify(validColor(manifest.effects?.[effect]), `${item.id} 的 ${effect} 颜色无效`);
   }
-  if (manifest.idleIllustration) {
-    const { asset, displayHeight } = manifest.idleIllustration;
-    verify(typeof asset === "string" && /^[a-z0-9-]+\.png$/.test(asset)
-      && Number.isFinite(displayHeight) && displayHeight > 0 && displayHeight <= 128,
-    `${item.id} 的待机插画配置无效`);
-    const illustration = readFileSync(join(folder, asset));
-    verify(illustration.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
-      && illustration.readUInt32BE(16) > 0 && illustration.readUInt32BE(20) > 0,
-    `${item.id} 的待机插画不是有效 PNG`);
+  if (manifest.illustration) {
+    const art = manifest.illustration;
+    verify(typeof art.atlas === "string" && /^[a-z0-9-]+\.png$/.test(art.atlas)
+      && Number.isFinite(art.displayHeight) && art.displayHeight > 0 && art.displayHeight <= 128,
+    `${item.id} 的插画图集配置无效`);
+    const image = readFileSync(join(folder, art.atlas));
+    verify(image.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])),
+    `${item.id} 的插画图集不是 PNG`);
+    const artWidth = image.readUInt32BE(16);
+    const artHeight = image.readUInt32BE(20);
+    verify(art.frames && typeof art.frames === "object" && Object.keys(art.frames).length > 0,
+    `${item.id} 缺少插画帧`);
+    const artSizes = new Set();
+    for (const [name, rect] of Object.entries(art.frames)) {
+      verify(Array.isArray(rect) && rect.length === 4 && rect.every(Number.isInteger)
+        && rect[0] >= 0 && rect[1] >= 0 && rect[2] > 0 && rect[3] > 0
+        && rect[0] + rect[2] <= artWidth && rect[1] + rect[3] <= artHeight,
+      `${item.id} 的插画帧 ${name} 超出图集`);
+      artSizes.add(`${rect[2]}x${rect[3]}`);
+    }
+    verify(artSizes.size === 1, `${item.id} 的插画帧尺寸不一致`);
+    const first = Object.values(art.frames)[0];
+    verify(Array.isArray(art.anchor) && art.anchor.length === 2
+      && art.anchor.every((part, index) => Number.isFinite(part) && part >= 0 && part <= first[index + 2]),
+    `${item.id} 的插画脚底锚点无效`);
+    for (const name of ["takeBarEndOffset", "beamStartOffset"]) {
+      const offset = art.interactions?.[name];
+      verify(Array.isArray(offset) && offset.length === 2
+        && offset.every((part) => Number.isFinite(part) && Math.abs(part) <= 128),
+      `${item.id} 的插画交互点 ${name} 无效`);
+    }
+    for (const state of requiredStates.girl) {
+      const animation = art.animations?.[state];
+      verify(animation && Array.isArray(animation.frames) && animation.frames.length > 0
+        && Number.isFinite(animation.fps) && animation.fps > 0
+        && animation.frames.every((name) => name in art.frames),
+      `${item.id} 的插画动作 ${state} 无效`);
+    }
   }
 }
 verify(ids.has(catalog.defaultSkin), "默认皮肤不在目录中");

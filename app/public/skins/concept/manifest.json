@@ -237,8 +237,101 @@
     "token": "#8dd6bc",
     "progress": "#ffd26a"
   },
-  "idleIllustration": {
-    "asset": "hero-idle.png",
-    "displayHeight": 78
+  "illustration": {
+    "atlas": "hero-actions.png",
+    "displayHeight": 78,
+    "anchor": [
+      300,
+      490
+    ],
+    "interactions": {
+      "takeBarEndOffset": [
+        -28,
+        -19
+      ],
+      "beamStartOffset": [
+        32,
+        -38
+      ]
+    },
+    "frames": {
+      "idle": [
+        0,
+        0,
+        600,
+        520
+      ],
+      "reach": [
+        600,
+        0,
+        600,
+        520
+      ],
+      "bite": [
+        1200,
+        0,
+        600,
+        520
+      ],
+      "chew": [
+        0,
+        520,
+        600,
+        520
+      ],
+      "fire": [
+        600,
+        520,
+        600,
+        520
+      ],
+      "victory": [
+        1200,
+        520,
+        600,
+        520
+      ]
+    },
+    "animations": {
+      "idle": {
+        "frames": [
+          "idle"
+        ],
+        "fps": 1
+      },
+      "take": {
+        "frames": [
+          "idle",
+          "reach"
+        ],
+        "fps": 4.2
+      },
+      "eat": {
+        "frames": [
+          "bite",
+          "chew"
+        ],
+        "fps": 3.6
+      },
+      "beam": {
+        "frames": [
+          "chew",
+          "fire"
+        ],
+        "fps": 6.7
+      },
+      "hit": {
+        "frames": [
+          "fire"
+        ],
+        "fps": 1
+      },
+      "victory": {
+        "frames": [
+          "victory"
+        ],
+        "fps": 1
+      }
+    }
   }
 }
