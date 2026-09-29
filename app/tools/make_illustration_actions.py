@@ -82,6 +82,10 @@ mint = ROOT / "app" / "public" / "skins" / "mint"
 copyfile(mint / "sprites.png", TARGET / "sprites.png")
 manifest = json.loads((mint / "manifest.json").read_text(encoding="utf-8"))
 manifest["id"] = "concept"
+if (TARGET / "manifest.json").exists():
+    current = json.loads((TARGET / "manifest.json").read_text(encoding="utf-8"))
+    if "robotIllustration" in current:
+        manifest["robotIllustration"] = current["robotIllustration"]
 manifest["illustration"] = {
     "atlas": ATLAS_PATH.name,
     "displayHeight": 78,

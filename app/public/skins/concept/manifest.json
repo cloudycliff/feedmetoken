@@ -237,6 +237,70 @@
     "token": "#8dd6bc",
     "progress": "#ffd26a"
   },
+  "robotIllustration": {
+    "atlas": "robot-actions.png",
+    "displayHeight": 82,
+    "anchor": [
+      300,
+      490
+    ],
+    "beamImpactOffset": [
+      -15,
+      -48
+    ],
+    "frames": {
+      "entering": [
+        0,
+        0,
+        600,
+        520
+      ],
+      "ready": [
+        600,
+        0,
+        600,
+        520
+      ],
+      "hit": [
+        0,
+        520,
+        600,
+        520
+      ],
+      "defeated": [
+        600,
+        520,
+        600,
+        520
+      ]
+    },
+    "animations": {
+      "entering": {
+        "frames": [
+          "entering"
+        ],
+        "fps": 1
+      },
+      "ready": {
+        "frames": [
+          "ready"
+        ],
+        "fps": 1
+      },
+      "hit": {
+        "frames": [
+          "hit"
+        ],
+        "fps": 1
+      },
+      "defeated": {
+        "frames": [
+          "defeated"
+        ],
+        "fps": 1
+      }
+    }
+  },
   "illustration": {
     "atlas": "hero-actions.png",
     "displayHeight": 78,

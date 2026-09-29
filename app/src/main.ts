@@ -2,7 +2,7 @@ import { Application, Graphics, Sprite, Text, Texture } from "pixi.js";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import gameConfig from "../game-config.json";
-import { animationFrame, illustrationFrame, loadSkin, loadSkinCatalog, type LoadedSkin } from "./skins";
+import { animationFrame, illustrationFrame, loadSkin, loadSkinCatalog, robotIllustrationFrame, type LoadedSkin } from "./skins";
 
 const { rules, timing, display, preview } = gameConfig;
 
@@ -270,6 +270,7 @@ async function start() {
   const robot = new Sprite(animationFrame(skin, "robot", "entering", 0));
   robot.position.set(enemySpawnX, 101);
   app.stage.addChild(robot);
+  let robotBaseScale = 1;
   const beam = new Graphics();
   app.stage.addChild(beam);
   const producedBar = new Sprite(skin.textures[skin.manifest.objects.bar]);
@@ -293,11 +294,21 @@ async function start() {
       const scale = displayHeight / frameHeight;
       girlIllustration.scale.set(scale);
     }
-    robot.texture = animationFrame(skin, "robot", "ready", 0);
+    robot.texture = skin.robotIllustration
+      ? robotIllustrationFrame(skin, "ready", 0) : animationFrame(skin, "robot", "ready", 0);
     const [girlX, girlY] = skin.manifest.anchors.girl;
-    const [robotX, robotY] = skin.manifest.anchors.robot;
     girl.anchor.set(girlX / girl.texture.width, girlY / girl.texture.height);
-    robot.anchor.set(robotX / robot.texture.width, robotY / robot.texture.height);
+    if (skin.robotIllustration) {
+      const { displayHeight, anchor, frames } = skin.robotIllustration.manifest;
+      const [,, frameWidth, frameHeight] = Object.values(frames)[0];
+      robot.anchor.set(anchor[0] / frameWidth, anchor[1] / frameHeight);
+      robotBaseScale = displayHeight / frameHeight;
+    } else {
+      const [robotX, robotY] = skin.manifest.anchors.robot;
+      robot.anchor.set(robotX / robot.texture.width, robotY / robot.texture.height);
+      robotBaseScale = 1;
+    }
+    robot.scale.set(robotBaseScale);
     for (const bar of [...pileBars, producedBar, takenBar]) bar.texture = skin.textures[skin.manifest.objects.bar];
     machineLabel.style.fill = skin.colors.token;
   }
@@ -352,11 +363,14 @@ async function start() {
     if (skin.illustration) girlIllustration.texture = illustrationFrame(skin, phase, phaseElapsedMs / 1000, phase === "idle");
     girlIllustration.y = girl.y;
     girl.visible = !girlIllustration.visible;
-    robot.texture = animationFrame(skin, "robot", enemyMode === "defeated" ? "defeated" : phase === "hit" ? "hit" : enemyMode, clock);
+    const robotState = enemyMode === "defeated" ? "defeated" : phase === "hit" ? "hit" : enemyMode;
+    robot.texture = skin.robotIllustration
+      ? robotIllustrationFrame(skin, robotState, clock)
+      : animationFrame(skin, "robot", robotState, clock);
     const stride = enemyMode === "entering" ? Math.round(Math.sin(clock * 16) * 3) : 0;
     robot.position.set(Math.round(enemyX), 101 + (phase === "hit" ? Math.sin(clock * 55) * 2 : enemyMode === "entering" ? Math.abs(stride) * 0.4 : Math.sin(clock * 2) * 0.5));
     robot.alpha = enemyMode === "defeated" ? 0.55 : 1;
-    robot.scale.y = enemyMode === "defeated" ? 0.75 : 1;
+    robot.scale.y = robotBaseScale * (enemyMode === "defeated" ? 0.75 : 1);
     producedBar.visible = activeProduction !== null && activeProduction > 0 && productionProgress >= 0.5;
     if (producedBar.visible) {
       const progress = (productionProgress - 0.5) * 2;
@@ -380,9 +394,18 @@ async function start() {
         ? girl.x + skin.illustration.manifest.interactions.beamStartOffset[0] : 166;
       const startY = skin.illustration
         ? girl.y + skin.illustration.manifest.interactions.beamStartOffset[1] : 69;
-      beam.rect(startX, startY, 222 - startX, 3).fill(skin.colors.beam);
-      beam.rect(startX, startY + 1, 228 - startX, 1).fill(0xffffff);
-      beam.circle(225, startY + 1, 6).fill(0xffeeab);
+      if (skin.robotIllustration) {
+        const [impactX, impactY] = skin.robotIllustration.manifest.beamImpactOffset;
+        const targetX = robot.x + impactX;
+        const targetY = robot.y + impactY;
+        beam.moveTo(startX, startY).lineTo(targetX, targetY).stroke({ width: 3, color: skin.colors.beam });
+        beam.moveTo(startX, startY).lineTo(targetX + 4, targetY).stroke({ width: 1, color: 0xffffff });
+        beam.circle(targetX, targetY, 6).fill(0xffeeab);
+      } else {
+        beam.rect(startX, startY, 56, 3).fill(skin.colors.beam);
+        beam.rect(startX, startY + 1, 62, 1).fill(0xffffff);
+        beam.circle(225, startY + 1, 6).fill(0xffeeab);
+      }
     }
   });
   showState();

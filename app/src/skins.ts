@@ -7,16 +7,22 @@ export type SkinCatalog = {
 
 type Animation = { frames: string[]; fps: number };
 type GirlState = "idle" | "take" | "eat" | "beam" | "hit" | "victory";
-type IllustrationManifest = {
+type RobotState = "entering" | "ready" | "hit" | "defeated";
+type ArtManifest<State extends string> = {
   atlas: string;
   displayHeight: number;
   anchor: [number, number];
+  frames: Record<string, [number, number, number, number]>;
+  animations: Record<State, Animation>;
+};
+type IllustrationManifest = ArtManifest<GirlState> & {
   interactions: {
     takeBarEndOffset: [number, number];
     beamStartOffset: [number, number];
   };
-  frames: Record<string, [number, number, number, number]>;
-  animations: Record<GirlState, Animation>;
+};
+type RobotIllustrationManifest = ArtManifest<RobotState> & {
+  beamImpactOffset: [number, number];
 };
 
 export type SkinManifest = {
@@ -27,9 +33,10 @@ export type SkinManifest = {
   objects: { floor: string; tray: string; bar: string };
   anchors: { girl: [number, number]; robot: [number, number] };
   illustration?: IllustrationManifest;
+  robotIllustration?: RobotIllustrationManifest;
   animations: {
     girl: Record<GirlState, Animation>;
-    robot: Record<"entering" | "ready" | "hit" | "defeated", Animation>;
+    robot: Record<RobotState, Animation>;
     machine: Record<"idle" | "active", Animation>;
   };
   effects: { beam: string; token: string; progress: string };
@@ -40,6 +47,7 @@ export type LoadedSkin = {
   textures: Record<string, Texture>;
   colors: { beam: number; token: number; progress: number };
   illustration?: { manifest: IllustrationManifest; textures: Record<string, Texture> };
+  robotIllustration?: { manifest: RobotIllustrationManifest; textures: Record<string, Texture> };
 };
 
 const skinCache = new Map<string, Promise<LoadedSkin>>();
@@ -115,7 +123,7 @@ function validateManifest(manifest: SkinManifest, id: string, width: number, hei
   color(manifest.effects.progress);
 }
 
-function validateIllustration(art: IllustrationManifest, id: string, width: number, height: number) {
+function validateArt<State extends string>(art: ArtManifest<State>, id: string, width: number, height: number, states: readonly State[]) {
   if (!safeFile.test(art.atlas) || !Number.isFinite(art.displayHeight)
     || art.displayHeight <= 0 || art.displayHeight > 128
     || !art.frames || typeof art.frames !== "object" || Object.keys(art.frames).length === 0) {
@@ -136,16 +144,7 @@ function validateIllustration(art: IllustrationManifest, id: string, width: numb
     || art.anchor.some((part, index) => !Number.isFinite(part) || part < 0 || part > first[index + 2])) {
     throw new Error(`${id} 的插画脚底锚点无效`);
   }
-  for (const [name, offset] of Object.entries(art.interactions ?? {})) {
-    if (!Array.isArray(offset) || offset.length !== 2
-      || offset.some((part) => !Number.isFinite(part) || Math.abs(part) > 128)) {
-      throw new Error(`${id} 的插画交互点 ${name} 无效`);
-    }
-  }
-  if (!art.interactions?.takeBarEndOffset || !art.interactions?.beamStartOffset) {
-    throw new Error(`${id} 缺少插画交互点`);
-  }
-  for (const state of ["idle", "take", "eat", "beam", "hit", "victory"] as const) {
+  for (const state of states) {
     const animation = art.animations?.[state];
     if (!animation || !Array.isArray(animation.frames) || animation.frames.length === 0
       || !Number.isFinite(animation.fps) || animation.fps <= 0
@@ -153,6 +152,24 @@ function validateIllustration(art: IllustrationManifest, id: string, width: numb
       throw new Error(`${id} 的插画动作 ${state} 无效`);
     }
   }
+}
+
+function validOffset(offset: [number, number] | undefined): boolean {
+  return Array.isArray(offset) && offset.length === 2
+    && offset.every((part) => Number.isFinite(part) && Math.abs(part) <= 128);
+}
+
+async function loadArtTextures(id: string, art: { atlas: string; frames: Record<string, [number, number, number, number]> },
+  validate: (width: number, height: number) => void): Promise<Record<string, Texture>> {
+  if (!safeFile.test(art.atlas)) throw new Error(`${id} 的插画图集路径无效`);
+  const atlas = await Assets.load<Texture>(`/skins/${id}/${art.atlas}`);
+  atlas.source.scaleMode = "linear";
+  validate(atlas.width, atlas.height);
+  const textures: Record<string, Texture> = {};
+  for (const [name, [x, y, width, height]] of Object.entries(art.frames)) {
+    textures[name] = new Texture({ source: atlas.source, frame: new Rectangle(x, y, width, height) });
+  }
+  return textures;
 }
 
 export async function loadSkin(catalog: SkinCatalog, id: string): Promise<LoadedSkin> {
@@ -171,20 +188,28 @@ export async function loadSkin(catalog: SkinCatalog, id: string): Promise<Loaded
       let illustration: LoadedSkin["illustration"];
       if (manifest.illustration) {
         const art = manifest.illustration;
-        if (!safeFile.test(art.atlas)) throw new Error(`${id} 的插画图集路径无效`);
-        const artAtlas = await Assets.load<Texture>(`/skins/${id}/${art.atlas}`);
-        artAtlas.source.scaleMode = "linear";
-        validateIllustration(art, id, artAtlas.width, artAtlas.height);
-        const artTextures: Record<string, Texture> = {};
-        for (const [name, [x, y, width, height]] of Object.entries(art.frames)) {
-          artTextures[name] = new Texture({ source: artAtlas.source, frame: new Rectangle(x, y, width, height) });
-        }
-        illustration = { manifest: art, textures: artTextures };
+        const textures = await loadArtTextures(id, art, (width, height) => {
+          validateArt(art, id, width, height, ["idle", "take", "eat", "beam", "hit", "victory"]);
+          if (!validOffset(art.interactions?.takeBarEndOffset) || !validOffset(art.interactions?.beamStartOffset)) {
+            throw new Error(`${id} 的主角插画交互点无效`);
+          }
+        });
+        illustration = { manifest: art, textures };
+      }
+      let robotIllustration: LoadedSkin["robotIllustration"];
+      if (manifest.robotIllustration) {
+        const art = manifest.robotIllustration;
+        const textures = await loadArtTextures(id, art, (width, height) => {
+          validateArt(art, id, width, height, ["entering", "ready", "hit", "defeated"]);
+          if (!validOffset(art.beamImpactOffset)) throw new Error(`${id} 的机器人插画命中点无效`);
+        });
+        robotIllustration = { manifest: art, textures };
       }
       return {
         manifest,
         textures,
         illustration,
+        robotIllustration,
         colors: {
           beam: color(manifest.effects.beam),
           token: color(manifest.effects.token),
@@ -209,6 +234,12 @@ export function animationFrame(skin: LoadedSkin, group: keyof SkinManifest["anim
 export function illustrationFrame(skin: LoadedSkin, state: GirlState, seconds: number, loop = true): Texture {
   const art = skin.illustration;
   if (!art) throw new Error("当前皮肤没有插画动作");
+  return pickFrame(art.manifest.animations[state], art.textures, seconds, loop);
+}
+
+export function robotIllustrationFrame(skin: LoadedSkin, state: RobotState, seconds: number, loop = true): Texture {
+  const art = skin.robotIllustration;
+  if (!art) throw new Error("当前皮肤没有机器人插画动作");
   return pickFrame(art.manifest.animations[state], art.textures, seconds, loop);
 }
 
