@@ -50,6 +50,7 @@ let game: GameState = {
   skinId: "mint",
 };
 let phase: Phase = "idle";
+let phaseElapsedMs = 0;
 let clock = 0;
 let enemyMode: EnemyMode = "entering";
 let enemyX = enemySpawnX;
@@ -64,6 +65,11 @@ let takeProgress = 0;
 let refreshing = false;
 let skinError: string | null = null;
 let nativeCallQueue: Promise<void> = Promise.resolve();
+
+function setPhase(next: Phase) {
+  phase = next;
+  phaseElapsedMs = 0;
+}
 
 function updateFrameRate() {
   if (sceneApp) sceneApp.ticker.maxFPS = game.energyBars > 0 || enemyMode === "entering" || activeProduction !== null || productionQueue.length > 0 ? timing.activeFps : timing.idleFps;
@@ -304,6 +310,7 @@ async function start() {
   app.ticker.maxFPS = timing.activeFps;
   app.ticker.add((ticker) => {
     clock += ticker.deltaTime / 60;
+    phaseElapsedMs += ticker.deltaMS;
     advanceProduction(ticker.deltaMS);
     if (phase === "take") takeProgress = Math.min(1, takeProgress + ticker.deltaMS / timing.takeMs);
     if (enemyMode === "entering") {
@@ -328,7 +335,7 @@ async function start() {
       const column = index % 3;
       bar.position.set(65 + column * 11 + (row % 2 ? 4 : 0), 88 - row * 7);
     });
-    girl.texture = animationFrame(skin, "girl", phase, clock);
+    girl.texture = animationFrame(skin, "girl", phase, phaseElapsedMs / 1000, phase === "idle");
     girl.y = 101 + (phase === "idle" ? Math.sin(clock * 3) * 1.2 : 0);
     robot.texture = animationFrame(skin, "robot", enemyMode === "defeated" ? "defeated" : phase === "hit" ? "hit" : enemyMode, clock);
     const stride = enemyMode === "entering" ? Math.round(Math.sin(clock * 16) * 3) : 0;
@@ -340,13 +347,13 @@ async function start() {
       const progress = (productionProgress - 0.5) * 2;
       producedBar.position.set(Math.round(54 + progress * 20), Math.round(76 + progress * 8));
     }
-    takenBar.visible = phase === "take" || phase === "eat";
+    takenBar.visible = phase === "take" || (phase === "eat" && phaseElapsedMs < timing.eatMs / 2);
     if (phase === "take") {
       const eased = takeProgress * takeProgress * (3 - 2 * takeProgress);
       takenBar.position.set(Math.round(78 + eased * 43), Math.round(79 - eased * 17));
     } else if (phase === "eat") takenBar.position.set(121, 62);
     beam.clear();
-    if (phase === "beam") {
+    if (phase === "beam" && phaseElapsedMs >= timing.beamMs / 2) {
       beam.rect(166, 69, 56, 3).fill(skin.colors.beam);
       beam.rect(166, 70, 62, 1).fill(0xffffff);
       beam.circle(225, 70, 6).fill(0xffeeab);
@@ -361,23 +368,23 @@ async function start() {
     if (pileCount() === 0) { await pause(100); continue; }
     reservedBar = true;
     takeProgress = 0;
-    phase = "take";
+    setPhase("take");
     await pause(timing.takeMs);
-    phase = "eat";
+    setPhase("eat");
     sound("eat");
     await pause(timing.eatMs);
-    phase = "beam";
+    setPhase("beam");
     sound("beam");
     await pause(timing.beamMs);
     const waveBefore = game.wave;
     try { game = await call("perform_attack"); reservedBar = false; showState(); }
-    catch (error) { reservedBar = false; game.lastError = String(error); showState(); phase = "idle"; await pause(600); continue; }
+    catch (error) { reservedBar = false; game.lastError = String(error); showState(); setPhase("idle"); await pause(600); continue; }
     const defeated = waveBefore !== game.wave;
     if (defeated) setEnemyMode("defeated");
-    phase = defeated ? "victory" : "hit";
+    setPhase(defeated ? "victory" : "hit");
     sound(defeated ? "victory" : "hit");
     await pause(defeated ? timing.defeatMs : timing.hitMs);
-    phase = "idle";
+    setPhase("idle");
     if (defeated) {
       enemyX = enemySpawnX;
       setEnemyMode("entering");

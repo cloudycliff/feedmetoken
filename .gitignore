@@ -1,1 +1,4 @@
 .npm-cache/
+output/
+__pycache__/
+*.pyc

@@ -1,13 +1,14 @@
-"""Regenerate the two editable placeholder atlases (requires Pillow).
+"""Regenerate the two editable skin atlases (requires Pillow).
 
-These are temporary game sprites, not the final character art. Keep frame names,
-sizes, and ground anchors stable when replacing them with hand-drawn sprites.
+The heroine follows the accepted concept; enemy and machinery remain placeholders.
+Keep frame sizes and ground anchors stable when replacing them with final art.
 """
 
 import json
 from pathlib import Path
 
 from PIL import Image, ImageDraw
+from draw_hero_v1 import ANCHOR, POSES, draw_hero
 
 
 ROOT = Path(__file__).resolve().parents[1] / "public" / "skins"
@@ -19,7 +20,7 @@ def register(name, x, y, width, height):
     FRAMES[name] = [x, y, width, height]
 
 
-for index, pose in enumerate(("idle_0", "idle_1", "take", "eat", "beam", "victory")):
+for index, pose in enumerate(POSES):
     register(f"girl_{pose}", index * 96, 0, 96, 80)
 for index, pose in enumerate(("walk_0", "walk_1", "ready", "hit", "defeated")):
     register(f"robot_{pose}", index * 64, 80, 64, 80)
@@ -37,6 +38,10 @@ PALETTES = {
         "shoe": "#f5b66b", "metal": "#5d8290", "screen": "#263f5e",
         "screen_light": "#627ca1", "accent": "#8dd6bc", "alert": "#f17e88",
         "bar": "#ffd26a", "bar_highlight": "#fff0c5", "bar_edge": "#f19d69",
+        "hair_light": "#536580", "skin_shadow": "#e7bc9c",
+        "coat_light": "#99e1cb", "coat_shadow": "#479c98",
+        "bag": "#df827e", "bag_light": "#ffd9ac", "sock": "#f8edda",
+        "cream": "#fff4db", "eye": "#704f57",
     },
     "peach": {
         "outline": "#473859", "coat": "#e99a9e", "hair": "#6b4c71",
@@ -44,6 +49,10 @@ PALETTES = {
         "shoe": "#ffd08a", "metal": "#a7799e", "screen": "#493956",
         "screen_light": "#b286a4", "accent": "#ffd1a0", "alert": "#f48b79",
         "bar": "#a5e5b0", "bar_highlight": "#e4ffd6", "bar_edge": "#60bfa4",
+        "hair_light": "#806586", "skin_shadow": "#ecc0a9",
+        "coat_light": "#ffd1c4", "coat_shadow": "#bc728b",
+        "bag": "#d27694", "bag_light": "#ffe0b5", "sock": "#fff0e4",
+        "cream": "#fff6e9", "eye": "#765064",
     },
 }
 
@@ -58,53 +67,6 @@ def draw_atlas(palette):
 
     def box(x, y, width, height, color):
         draw.rectangle((x, y, x + width - 1, y + height - 1), fill=color)
-
-    def girl(pose):
-        ox, oy = frame(f"girl_{pose}")
-        ax, ay = ox + 48, oy + 68
-
-        def r(x, y, width, height, color):
-            box(ax + x, ay + y, width, height, color)
-
-        draw.ellipse((ax - 29, ay - 3, ax + 29, ay + 7), fill="#10263844")
-        r(-17, -15, 10, 15, palette["outline"])
-        r(6, -15, 10, 15, palette["outline"])
-        r(-20, -43, 40, 31, palette["outline"])
-        r(-17, -40, 34, 25, palette["coat"])
-        r(-6, -38, 12, 20, "#f4e8c6")
-        r(-13, -64, 28, 11, palette["hair"])
-        r(-19, -60, 40, 37, palette["outline"])
-        r(-16, -58, 34, 31, palette["skin"])
-        r(-19, -59, 36, 10, palette["hair"])
-        r(10, -63, 9, 13, palette["hair"])
-        r(-7, -68, 5, 7, palette["hair"])
-        eye_height = 1 if pose == "idle_1" else 5
-        r(-10, -46, 4, eye_height, palette["outline"])
-        r(7, -46, 4, eye_height, palette["outline"])
-        r(-16, -40, 6, 3, palette["blush"])
-        r(12, -40, 6, 3, palette["blush"])
-        if pose == "eat":
-            r(-1, -39, 8, 7, palette["mouth"])
-        else:
-            r(0, -37, 6, 2 if pose == "beam" else 3, palette["mouth"])
-        if pose in ("beam", "victory"):
-            r(17, -34, 20, 7, palette["outline"])
-            r(19, -32, 18, 3, palette["skin"])
-            draw.ellipse((ax + 33, ay - 35, ax + 43, ay - 25), fill=palette["bar"] if pose == "beam" else palette["skin"])
-        else:
-            r(17, -37, 8, 17, palette["outline"])
-            r(19, -35, 5, 14, palette["skin"])
-        if pose == "take":
-            r(-43, -39, 24, 8, palette["outline"])
-            r(-44, -37, 21, 4, palette["skin"])
-            draw.ellipse((ax - 48, ay - 39, ax - 40, ay - 31), fill=palette["skin"])
-        elif pose == "eat":
-            r(-24, -42, 20, 8, palette["outline"])
-            r(-22, -40, 18, 4, palette["skin"])
-        else:
-            r(-25, -37, 8, 17, palette["outline"])
-            r(-23, -35, 5, 14, palette["skin"])
-        r(-23, -25, 8, 10, palette["shoe"])
 
     def robot(pose):
         ox, oy = frame(f"robot_{pose}")
@@ -135,8 +97,8 @@ def draw_atlas(palette):
             r(-3, -47, 8, 2, palette["alert"])
         r(-5, -69, 10, 3, palette["bar_edge"])
 
-    for pose in ("idle_0", "idle_1", "take", "eat", "beam", "victory"):
-        girl(pose)
+    for pose in POSES:
+        draw_hero(draw, palette, FRAMES[f"girl_{pose}"], pose)
     for pose in ("walk_0", "walk_1", "ready", "hit", "defeated"):
         robot(pose)
 
@@ -164,10 +126,14 @@ def draw_atlas(palette):
         draw.ellipse((ox + 45, oy + 27, ox + 49, oy + 31), fill=palette["bar"] if active else palette["accent"])
 
     ox, oy = frame("bar")
-    box(ox, oy, 17, 7, palette["outline"])
-    box(ox + 2, oy + 1, 13, 5, palette["bar"])
-    box(ox + 4, oy + 2, 4, 3, palette["bar_highlight"])
-    box(ox + 13, oy + 1, 2, 5, palette["bar_edge"])
+    box(ox + 1, oy + 1, 18, 8, palette["outline"])
+    box(ox + 2, oy + 2, 16, 6, palette["bar"])
+    box(ox + 2, oy + 3, 2, 4, palette["bar_edge"])
+    box(ox + 15, oy + 2, 2, 6, palette["bar_edge"])
+    box(ox + 5, oy + 3, 5, 2, palette["bar_highlight"])
+    box(ox + 11, oy + 5, 2, 2, palette["bar_highlight"])
+    box(ox + 17, oy + 3, 2, 1, palette["bar_highlight"])
+    box(ox + 17, oy + 6, 2, 1, palette["bar_highlight"])
     ox, oy = frame("tray")
     box(ox, oy, 38, 5, palette["outline"])
     box(ox + 2, oy, 34, 2, palette["accent"])
@@ -192,14 +158,14 @@ for skin_id, palette in PALETTES.items():
         "atlas": "sprites.png",
         "frames": FRAMES,
         "objects": {"floor": "floor", "tray": "tray", "bar": "bar"},
-        "anchors": {"girl": [48, 68], "robot": [32, 69]},
+        "anchors": {"girl": list(ANCHOR), "robot": [32, 69]},
         "animations": {
             "girl": {
-                "idle": animation("girl_idle_0", "girl_idle_0", "girl_idle_0", "girl_idle_1", fps=1),
-                "take": animation("girl_take"),
-                "eat": animation("girl_eat"),
-                "beam": animation("girl_beam"),
-                "hit": animation("girl_beam"),
+                "idle": animation(*(["girl_idle_0"] * 15 + ["girl_idle_1"]), fps=8),
+                "take": animation("girl_take_0", "girl_take_1", fps=4.2),
+                "eat": animation("girl_eat_0", "girl_eat_1", fps=3.6),
+                "beam": animation("girl_beam_0", "girl_beam_1", fps=6.7),
+                "hit": animation("girl_beam_1"),
                 "victory": animation("girl_victory"),
             },
             "robot": {

@@ -15,26 +15,44 @@
       96,
       80
     ],
-    "girl_take": [
+    "girl_take_0": [
       192,
       0,
       96,
       80
     ],
-    "girl_eat": [
+    "girl_take_1": [
       288,
       0,
       96,
       80
     ],
-    "girl_beam": [
+    "girl_eat_0": [
       384,
       0,
       96,
       80
     ],
-    "girl_victory": [
+    "girl_eat_1": [
       480,
+      0,
+      96,
+      80
+    ],
+    "girl_beam_0": [
+      576,
+      0,
+      96,
+      80
+    ],
+    "girl_beam_1": [
+      672,
+      0,
+      96,
+      80
+    ],
+    "girl_victory": [
+      768,
       0,
       96,
       80
@@ -108,7 +126,7 @@
   "anchors": {
     "girl": [
       48,
-      68
+      74
     ],
     "robot": [
       32,
@@ -122,31 +140,46 @@
           "girl_idle_0",
           "girl_idle_0",
           "girl_idle_0",
+          "girl_idle_0",
+          "girl_idle_0",
+          "girl_idle_0",
+          "girl_idle_0",
+          "girl_idle_0",
+          "girl_idle_0",
+          "girl_idle_0",
+          "girl_idle_0",
+          "girl_idle_0",
+          "girl_idle_0",
+          "girl_idle_0",
+          "girl_idle_0",
           "girl_idle_1"
         ],
-        "fps": 1
+        "fps": 8
       },
       "take": {
         "frames": [
-          "girl_take"
+          "girl_take_0",
+          "girl_take_1"
         ],
-        "fps": 1
+        "fps": 4.2
       },
       "eat": {
         "frames": [
-          "girl_eat"
+          "girl_eat_0",
+          "girl_eat_1"
         ],
-        "fps": 1
+        "fps": 3.6
       },
       "beam": {
         "frames": [
-          "girl_beam"
+          "girl_beam_0",
+          "girl_beam_1"
         ],
-        "fps": 1
+        "fps": 6.7
       },
       "hit": {
         "frames": [
-          "girl_beam"
+          "girl_beam_1"
         ],
         "fps": 1
       },

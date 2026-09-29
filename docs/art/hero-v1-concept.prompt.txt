@@ -1,0 +1,5 @@
+Model: gpt-image-2
+Size: 1024x1024
+Quality: low
+
+Original character concept for Feed Me Token, a desktop idle game. A cute greedy three-head-tall cartoon girl with a rounded face, short dark navy hair and one curved hair tuft, a simple oversized mint teal jacket, a small snack pouch at her waist. She eagerly holds one glowing amber foil-wrapped token energy bar, with bright eyes and puffed cheeks. One full-body three-quarter view facing right, clear silhouette and expressive hands. Polished 2D game character concept art with crisp pixel-inspired shapes, limited palette of warm cream, mint teal, coral, navy and amber. Plain light neutral background, no scene, no other characters. Entire figure visible with generous margins. Fully original design, no text, no logo, no watermark, no resemblance to existing game or anime characters.

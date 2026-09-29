@@ -133,8 +133,9 @@ export async function loadSkin(catalog: SkinCatalog, id: string): Promise<Loaded
   }
 }
 
-export function animationFrame(skin: LoadedSkin, group: keyof SkinManifest["animations"], state: string, seconds: number): Texture {
+export function animationFrame(skin: LoadedSkin, group: keyof SkinManifest["animations"], state: string, seconds: number, loop = true): Texture {
   const animation = (skin.manifest.animations[group] as Record<string, Animation>)[state];
-  const index = Math.floor(seconds * animation.fps) % animation.frames.length;
+  const frame = Math.floor(seconds * animation.fps);
+  const index = loop ? frame % animation.frames.length : Math.min(frame, animation.frames.length - 1);
   return skin.textures[animation.frames[index]];
 }
