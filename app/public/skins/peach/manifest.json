@@ -1,0 +1,207 @@
+{
+  "formatVersion": 1,
+  "id": "peach",
+  "atlas": "sprites.png",
+  "frames": {
+    "girl_idle_0": [
+      0,
+      0,
+      96,
+      80
+    ],
+    "girl_idle_1": [
+      96,
+      0,
+      96,
+      80
+    ],
+    "girl_take": [
+      192,
+      0,
+      96,
+      80
+    ],
+    "girl_eat": [
+      288,
+      0,
+      96,
+      80
+    ],
+    "girl_beam": [
+      384,
+      0,
+      96,
+      80
+    ],
+    "girl_victory": [
+      480,
+      0,
+      96,
+      80
+    ],
+    "robot_walk_0": [
+      0,
+      80,
+      64,
+      80
+    ],
+    "robot_walk_1": [
+      64,
+      80,
+      64,
+      80
+    ],
+    "robot_ready": [
+      128,
+      80,
+      64,
+      80
+    ],
+    "robot_hit": [
+      192,
+      80,
+      64,
+      80
+    ],
+    "robot_defeated": [
+      256,
+      80,
+      64,
+      80
+    ],
+    "machine_idle": [
+      0,
+      160,
+      80,
+      64
+    ],
+    "machine_active": [
+      80,
+      160,
+      80,
+      64
+    ],
+    "bar": [
+      160,
+      160,
+      20,
+      10
+    ],
+    "tray": [
+      192,
+      160,
+      40,
+      8
+    ],
+    "floor": [
+      0,
+      240,
+      320,
+      16
+    ]
+  },
+  "objects": {
+    "floor": "floor",
+    "tray": "tray",
+    "bar": "bar"
+  },
+  "anchors": {
+    "girl": [
+      48,
+      68
+    ],
+    "robot": [
+      32,
+      69
+    ]
+  },
+  "animations": {
+    "girl": {
+      "idle": {
+        "frames": [
+          "girl_idle_0",
+          "girl_idle_0",
+          "girl_idle_0",
+          "girl_idle_1"
+        ],
+        "fps": 1
+      },
+      "take": {
+        "frames": [
+          "girl_take"
+        ],
+        "fps": 1
+      },
+      "eat": {
+        "frames": [
+          "girl_eat"
+        ],
+        "fps": 1
+      },
+      "beam": {
+        "frames": [
+          "girl_beam"
+        ],
+        "fps": 1
+      },
+      "hit": {
+        "frames": [
+          "girl_beam"
+        ],
+        "fps": 1
+      },
+      "victory": {
+        "frames": [
+          "girl_victory"
+        ],
+        "fps": 1
+      }
+    },
+    "robot": {
+      "entering": {
+        "frames": [
+          "robot_walk_0",
+          "robot_walk_1"
+        ],
+        "fps": 8
+      },
+      "ready": {
+        "frames": [
+          "robot_ready"
+        ],
+        "fps": 1
+      },
+      "hit": {
+        "frames": [
+          "robot_hit"
+        ],
+        "fps": 1
+      },
+      "defeated": {
+        "frames": [
+          "robot_defeated"
+        ],
+        "fps": 1
+      }
+    },
+    "machine": {
+      "idle": {
+        "frames": [
+          "machine_idle"
+        ],
+        "fps": 1
+      },
+      "active": {
+        "frames": [
+          "machine_active"
+        ],
+        "fps": 1
+      }
+    }
+  },
+  "effects": {
+    "beam": "#ffd1a0",
+    "token": "#ffd1a0",
+    "progress": "#a5e5b0"
+  }
+}

@@ -120,5 +120,16 @@ button { font: inherit; cursor: pointer; }
 #details div { display: flex; justify-content: space-between; margin-bottom: 5px; }
 #details span { color: #bcd0cf; }
 #details strong { font-size: 12px; }
+#details .skin-row { align-items: center; }
+#skin-select {
+  min-width: 126px;
+  border: 1px solid #6f8995;
+  border-radius: 4px;
+  padding: 3px 5px;
+  background: #304b63;
+  color: #fff;
+  font: inherit;
+}
+#skin-select:disabled { opacity: .6; }
 #status-message { margin: 7px 0 0; color: #91cdbd; font-size: 11px; }
 #status-message.error { color: #ffc4a6; }

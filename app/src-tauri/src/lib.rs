@@ -41,11 +41,14 @@ struct GameState {
     always_on_top: bool,
     #[serde(default = "default_true")]
     muted: bool,
+    #[serde(default = "default_skin_id")]
+    skin_id: String,
     #[serde(default)]
     window_position: Option<(i32, i32)>,
 }
 
 fn default_true() -> bool { true }
+fn default_skin_id() -> String { "mint".to_string() }
 
 impl Default for GameState {
     fn default() -> Self {
@@ -66,6 +69,7 @@ impl Default for GameState {
             last_error: None,
             always_on_top: true,
             muted: true,
+            skin_id: default_skin_id(),
             window_position: None,
         }
     }
@@ -104,6 +108,7 @@ struct PublicState {
     connected: bool,
     always_on_top: bool,
     muted: bool,
+    skin_id: String,
 }
 
 struct SharedGame {
@@ -137,6 +142,7 @@ fn public_state(game: &GameState) -> PublicState {
         connected: connected(),
         always_on_top: game.always_on_top,
         muted: game.muted,
+        skin_id: game.skin_id.clone(),
     }
 }
 
@@ -326,6 +332,14 @@ fn toggle_mute(shared: State<'_, SharedGame>) -> Result<PublicState, String> {
 }
 
 #[tauri::command]
+fn set_skin(shared: State<'_, SharedGame>, skin_id: String) -> Result<PublicState, String> {
+    if skin_id.is_empty() || skin_id.len() > 32 || !skin_id.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-') {
+        return Err("无效的皮肤 ID".to_string());
+    }
+    update(&shared, |next| next.skin_id = skin_id)
+}
+
+#[tauri::command]
 fn save_window_position(window: tauri::Window, shared: State<'_, SharedGame>) -> Result<(), String> {
     if window.is_minimized().map_err(|error| error.to_string())? { return Ok(()) }
     let position = window.outer_position().map_err(|error| error.to_string())?;
@@ -377,7 +391,7 @@ pub fn run() {
             tray.build(app)?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_game_state, refresh_usage, perform_attack, purchase_upgrade, begin_drag, toggle_always_on_top, toggle_mute, save_window_position, minimize_window, quit_app])
+        .invoke_handler(tauri::generate_handler![get_game_state, refresh_usage, perform_attack, purchase_upgrade, begin_drag, toggle_always_on_top, toggle_mute, set_skin, save_window_position, minimize_window, quit_app])
         .run(tauri::generate_context!())
         .expect("Feed Me Token failed to start");
 }
@@ -488,5 +502,18 @@ mod tests {
         assert_eq!((game.energy_bars, game.token_remainder), (1, 0));
         credit_tokens(&mut game, threshold * 2 + 5);
         assert_eq!((game.energy_bars, game.token_remainder), (3, 5));
+    }
+
+    #[test]
+    fn old_save_uses_default_skin_and_selection_persists() {
+        let mut old = serde_json::to_value(GameState::default()).unwrap();
+        old.as_object_mut().unwrap().remove("skinId");
+        let mut game: GameState = serde_json::from_value(old).unwrap();
+        assert_eq!(game.skin_id, "mint");
+        game.skin_id = "peach".to_string();
+        let path = temporary_path("skin");
+        save_game(&path, &game).unwrap();
+        assert_eq!(load_game(&path, &path).unwrap().skin_id, "peach");
+        fs::remove_file(path).unwrap();
     }
 }

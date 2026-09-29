@@ -1,7 +1,8 @@
-import { Application, Graphics, Text } from "pixi.js";
+import { Application, Graphics, Sprite, Text } from "pixi.js";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import gameConfig from "../game-config.json";
+import { animationFrame, loadSkin, loadSkinCatalog, type LoadedSkin } from "./skins";
 
 const { rules, timing, display, preview } = gameConfig;
 
@@ -20,6 +21,7 @@ type GameState = {
   connected: boolean;
   alwaysOnTop: boolean;
   muted: boolean;
+  skinId: string;
 };
 
 type Phase = "idle" | "take" | "eat" | "beam" | "hit" | "victory";
@@ -45,6 +47,7 @@ let game: GameState = {
   connected: native,
   alwaysOnTop: true,
   muted: true,
+  skinId: "mint",
 };
 let phase: Phase = "idle";
 let clock = 0;
@@ -59,6 +62,7 @@ let pendingBars = 0;
 let reservedBar = false;
 let takeProgress = 0;
 let refreshing = false;
+let skinError: string | null = null;
 let nativeCallQueue: Promise<void> = Promise.resolve();
 
 function updateFrameRate() {
@@ -124,9 +128,9 @@ function sound(kind: "eat" | "beam" | "hit" | "victory") {
 const element = (id: string) => document.getElementById(id)!;
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-async function call(name: string): Promise<GameState> {
+async function call(name: string, args: Record<string, unknown> = {}): Promise<GameState> {
   if (native) {
-    const next = nativeCallQueue.then(() => invoke<GameState>(name));
+    const next = nativeCallQueue.then(() => invoke<GameState>(name, args));
     nativeCallQueue = next.then(() => undefined, () => undefined);
     return next;
   }
@@ -150,6 +154,10 @@ async function call(name: string): Promise<GameState> {
   }
   if (name === "toggle_always_on_top") game.alwaysOnTop = !game.alwaysOnTop;
   if (name === "toggle_mute") game.muted = !game.muted;
+  if (name === "set_skin") {
+    game.skinId = String(args.skinId);
+    localStorage.setItem("feed-me-token-skin", game.skinId);
+  }
   return { ...game };
 }
 
@@ -167,8 +175,8 @@ function showState() {
   status.textContent = !native ? "模拟模式" : game.lastError ? "读取异常" : game.connected ? "Codex 已连接" : "未发现 Codex";
   status.className = `source-status ${!native ? "" : game.lastError ? "error" : game.connected ? "ok" : ""}`;
   const message = element("status-message");
-  message.textContent = game.lastError ?? (native ? "仅在本机读取 Codex 用量记录。" : "浏览器预览：使用独立的模拟能量。" );
-  message.className = game.lastError ? "error" : "";
+  message.textContent = skinError ?? game.lastError ?? (native ? "仅在本机读取 Codex 用量记录。" : "浏览器预览：使用独立的模拟能量。" );
+  message.className = skinError || game.lastError ? "error" : "";
   const upgrade = element("upgrade") as HTMLButtonElement;
   const price = game.attackPower * rules.upgradeCostPerAttackPower;
   upgrade.textContent = `攻击 +${rules.attackPowerPerUpgrade} · ${price} 金币`;
@@ -210,180 +218,89 @@ async function refresh(simulate = true) {
   }
 }
 
-function drawGirl(graphics: Graphics, t: number) {
-  graphics.clear();
-  const bob = phase === "idle" ? Math.sin(t * 3) * 1.2 : 0;
-  graphics.y = 101 + bob;
-  const outline = 0x213d58;
-  const coat = 0x66c9b7;
-  const hair = 0x445270;
-  graphics.ellipse(0, 2, 29, 5).fill({ color: 0x102638, alpha: 0.25 });
-  graphics.rect(-17, -15, 10, 15).fill(outline);
-  graphics.rect(6, -15, 10, 15).fill(outline);
-  graphics.rect(-20, -43, 40, 31).fill(outline);
-  graphics.rect(-17, -40, 34, 25).fill(coat);
-  graphics.rect(-6, -38, 12, 20).fill(0xf4e8c6);
-  graphics.rect(-13, -64, 28, 11).fill(hair);
-  graphics.rect(-19, -60, 40, 37).fill(outline);
-  graphics.rect(-16, -58, 34, 31).fill(0xf6dfbe);
-  graphics.rect(-19, -59, 36, 10).fill(hair);
-  graphics.rect(10, -63, 9, 13).fill(hair);
-  graphics.rect(-7, -68, 5, 7).fill(hair);
-  const blink = phase === "idle" && Math.sin(t * 1.5) > 0.98;
-  graphics.rect(-10, -46, 4, blink ? 1 : 5).fill(outline);
-  graphics.rect(7, -46, 4, blink ? 1 : 5).fill(outline);
-  graphics.rect(-16, -40, 6, 3).fill(0xf6a9a0);
-  graphics.rect(12, -40, 6, 3).fill(0xf6a9a0);
-  if (phase === "eat") {
-    graphics.rect(-1, -39, 8, 7).fill(0xb5676c);
-  } else {
-    graphics.rect(0, -37, 6, phase === "beam" ? 2 : 3).fill(0xa75668);
-  }
-  if (phase === "beam" || phase === "hit" || phase === "victory") {
-    graphics.rect(17, -34, 20, 7).fill(outline);
-    graphics.rect(19, -32, 18, 3).fill(0xf6dfbe);
-    graphics.circle(38, -30, 5).fill(phase === "beam" ? 0xffe68a : 0xf6dfbe);
-  } else {
-    graphics.rect(17, -37, 8, 17).fill(outline);
-    graphics.rect(19, -35, 5, 14).fill(0xf6dfbe);
-  }
-  if (phase === "take") {
-    graphics.rect(-43, -39, 24, 8).fill(outline);
-    graphics.rect(-44, -37, 21, 4).fill(0xf6dfbe);
-    graphics.circle(-44, -35, 4).fill(0xf6dfbe);
-  } else if (phase === "eat") {
-    graphics.rect(-24, -42, 20, 8).fill(outline);
-    graphics.rect(-22, -40, 18, 4).fill(0xf6dfbe);
-  } else {
-    graphics.rect(-25, -37, 8, 17).fill(outline);
-    graphics.rect(-23, -35, 5, 14).fill(0xf6dfbe);
-  }
-  graphics.rect(-23, -25, 8, 10).fill(0xf5b66b);
-}
-
-function drawBar(graphics: Graphics, x: number, y: number) {
-  graphics.rect(x, y, 17, 7).fill(0x25405a);
-  graphics.rect(x + 2, y + 1, 13, 5).fill(0xffd26a);
-  graphics.rect(x + 4, y + 2, 4, 3).fill(0xfff0c5);
-  graphics.rect(x + 13, y + 1, 2, 5).fill(0xf19d69);
-}
-
-function drawMachine(graphics: Graphics, t: number) {
-  graphics.clear();
-  const running = activeProduction !== null;
-  graphics.rect(0, 55, 19, 13).fill(0x243c52);
-  graphics.rect(0, 58, 18, 6).fill(0x75b5b3);
-  graphics.rect(11, 42, 45, 58).fill(0x21394f);
-  graphics.rect(14, 45, 39, 52).fill(0x5d8290);
-  graphics.rect(17, 48, 33, 20).fill(0x203a50);
-  graphics.rect(20, 51, 27, 14).fill(running ? 0x62d0bd : 0x3d6573);
-  graphics.rect(25, 55, 4, 7).fill(0x163448);
-  graphics.rect(29, 55, 4, 2).fill(0x163448);
-  graphics.rect(35, 55, 4, 7).fill(0x163448);
-  graphics.rect(33, 60, 6, 2).fill(0x163448);
-  graphics.rect(17, 73, 30, 15).fill(0x2f5264);
-  if (game.tokenRemainder > 0) graphics.rect(20, 76, Math.max(1, Math.floor(24 * game.tokenRemainder / rules.tokensPerBar)), 5).fill(0xffd36b);
-  graphics.rect(19, 90, 7, 7).fill(0x21394f);
-  graphics.rect(41, 90, 7, 7).fill(0x21394f);
-  graphics.rect(51, 75, 15, 10).fill(0x21394f);
-  graphics.rect(54, 77, 12, 6).fill(0xabc8bd);
-  const light = running && Math.sin(t * 24) > 0 ? 0xffe488 : 0x8babb0;
-  graphics.circle(47, 71, 2).fill(light);
-  if (running && productionProgress < 0.5) {
-    const x = Math.round(-4 + productionProgress * 58);
-    graphics.rect(x, 58, 5, 5).fill(0xa0f9e1);
-    graphics.rect(x + 1, 59, 3, 3).fill(0xeaffcf);
-  }
-}
-
-function drawPile(graphics: Graphics) {
-  graphics.clear();
-  graphics.rect(64, 95, 38, 5).fill(0x263e54);
-  graphics.rect(66, 95, 34, 2).fill(0x8bb5a9);
-  const bars = Math.min(pileCount(), display.maxPileBars);
-  for (let index = 0; index < bars; index++) {
-    const row = Math.floor(index / 3);
-    const column = index % 3;
-    drawBar(graphics, 65 + column * 11 + (row % 2 ? 4 : 0), 88 - row * 7);
-  }
-}
-
-function drawMovingBars(graphics: Graphics) {
-  graphics.clear();
-  if (activeProduction !== null && activeProduction > 0 && productionProgress >= 0.5) {
-    const progress = (productionProgress - 0.5) * 2;
-    drawBar(graphics, Math.round(54 + progress * 20), Math.round(76 + progress * 8));
-  }
-  if (phase === "take") {
-    const eased = takeProgress * takeProgress * (3 - 2 * takeProgress);
-    drawBar(graphics, Math.round(78 + eased * 43), Math.round(79 - eased * 17));
-  } else if (phase === "eat") drawBar(graphics, 121, 62);
-}
-
-function drawRobot(graphics: Graphics, t: number) {
-  graphics.clear();
-  const walking = enemyMode === "entering";
-  const stride = walking ? Math.round(Math.sin(t * 16) * 3) : 0;
-  graphics.x = Math.round(enemyX);
-  graphics.y = 101 + (phase === "hit" ? Math.sin(t * 55) * 2 : walking ? Math.abs(stride) * 0.4 : Math.sin(t * 2) * 0.5);
-  graphics.alpha = enemyMode === "defeated" ? 0.55 : 1;
-  graphics.scale.y = enemyMode === "defeated" ? 0.75 : 1;
-  const edge = 0x1d354e;
-  graphics.ellipse(0, 2, 25, 4).fill({ color: 0x102638, alpha: 0.25 });
-  graphics.rect(-17 + stride, -18, 12, 18).fill(edge);
-  graphics.rect(5 - stride, -18, 12, 18).fill(edge);
-  graphics.rect(-16, -38, 32, 24).fill(edge);
-  graphics.rect(-13, -35, 26, 18).fill(0x76849c);
-  graphics.rect(-25, -36, 9, 21).fill(edge);
-  graphics.rect(16, -36, 9, 21).fill(edge);
-  graphics.rect(-28, -66, 56, 31).fill(edge);
-  graphics.rect(-24, -62, 48, 23).fill(phase === "hit" ? 0xd8f9ea : 0x627ca1);
-  graphics.rect(-20, -59, 40, 17).fill(enemyMode === "defeated" ? 0x172b3d : phase === "hit" ? 0xe9a3ae : 0x263f5e);
-  if (enemyMode === "defeated") {
-    graphics.rect(-12, -51, 24, 2).fill(0x6b8791);
-  } else if (phase === "hit") {
-    for (let index = 0; index < 5; index++) {
-      graphics.rect(-16 + index * 8, -57 + (index % 2) * 7, 5, 3).fill(index % 2 ? 0xffe68a : 0x90f5df);
-    }
-  } else {
-    graphics.rect(-11, -54, 6, 4).fill(0xf17e88);
-    graphics.rect(7, -54, 6, 4).fill(0xf17e88);
-    graphics.rect(-3, -47, 8, 2).fill(0xf17e88);
-  }
-  graphics.rect(-5, -69, 10, 3).fill(0xffbd6a);
-}
-
 async function start() {
   const app = new Application();
   await app.init({ width: 320, height: 128, backgroundAlpha: 0, antialias: false, resolution: 1, autoDensity: false });
   sceneApp = app;
+  try { game = await call("get_game_state"); } catch (error) { game.lastError = String(error); }
+  const catalog = await loadSkinCatalog();
+  const selectedId = native ? game.skinId : localStorage.getItem("feed-me-token-skin") ?? game.skinId;
+  let skin: LoadedSkin;
+  try {
+    skin = await loadSkin(catalog, selectedId);
+  } catch (error) {
+    skinError = `已使用默认皮肤：${String(error)}`;
+    skin = await loadSkin(catalog, catalog.defaultSkin);
+    try { game = await call("set_skin", { skinId: catalog.defaultSkin }); }
+    catch (saveError) { skinError += `；保存选择失败：${String(saveError)}`; }
+  }
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) app.ticker.stop();
     else app.ticker.start();
   });
   element("playfield").appendChild(app.canvas);
-  const floor = new Graphics();
-  floor.rect(2, 100, 316, 8).fill(0x223d56);
-  floor.rect(2, 100, 316, 2).fill(0x8dd6bc);
-  floor.rect(20, 108, 280, 4).fill(0x35576b);
+  const floor = new Sprite(skin.textures[skin.manifest.objects.floor]);
+  floor.position.set(0, 100);
   app.stage.addChild(floor);
-  const machine = new Graphics();
+  const machine = new Sprite(animationFrame(skin, "machine", "idle", 0));
+  machine.position.set(0, 42);
   app.stage.addChild(machine);
+  const machineFx = new Graphics();
+  app.stage.addChild(machineFx);
   const machineLabel = new Text({ text: "TOKEN", style: { fontFamily: "monospace", fontSize: 7, fontWeight: "bold", fill: 0xa0f9e1 } });
   machineLabel.position.set(3, 33);
   app.stage.addChild(machineLabel);
-  const pile = new Graphics();
-  app.stage.addChild(pile);
-  const girl = new Graphics();
+  const tray = new Sprite(skin.textures[skin.manifest.objects.tray]);
+  tray.position.set(64, 95);
+  app.stage.addChild(tray);
+  const pileBars = Array.from({ length: display.maxPileBars }, () => new Sprite(skin.textures[skin.manifest.objects.bar]));
+  for (const bar of pileBars) app.stage.addChild(bar);
+  const girl = new Sprite(animationFrame(skin, "girl", "idle", 0));
   girl.position.set(129, 101);
   app.stage.addChild(girl);
-  const robot = new Graphics();
+  const robot = new Sprite(animationFrame(skin, "robot", "entering", 0));
   robot.position.set(enemySpawnX, 101);
   app.stage.addChild(robot);
   const beam = new Graphics();
   app.stage.addChild(beam);
-  const movingBars = new Graphics();
-  app.stage.addChild(movingBars);
+  const producedBar = new Sprite(skin.textures[skin.manifest.objects.bar]);
+  const takenBar = new Sprite(skin.textures[skin.manifest.objects.bar]);
+  app.stage.addChild(producedBar, takenBar);
+  const skinSelect = element("skin-select") as HTMLSelectElement;
+  for (const item of catalog.skins) skinSelect.add(new Option(item.name, item.id));
+  skinSelect.value = skin.manifest.id;
+
+  function applySkin(next: LoadedSkin) {
+    skin = next;
+    floor.texture = skin.textures[skin.manifest.objects.floor];
+    tray.texture = skin.textures[skin.manifest.objects.tray];
+    machine.texture = animationFrame(skin, "machine", "idle", 0);
+    girl.texture = animationFrame(skin, "girl", "idle", 0);
+    robot.texture = animationFrame(skin, "robot", "ready", 0);
+    const [girlX, girlY] = skin.manifest.anchors.girl;
+    const [robotX, robotY] = skin.manifest.anchors.robot;
+    girl.anchor.set(girlX / girl.texture.width, girlY / girl.texture.height);
+    robot.anchor.set(robotX / robot.texture.width, robotY / robot.texture.height);
+    for (const bar of [...pileBars, producedBar, takenBar]) bar.texture = skin.textures[skin.manifest.objects.bar];
+    machineLabel.style.fill = skin.colors.token;
+  }
+  applySkin(skin);
+  skinSelect.addEventListener("change", async () => {
+    const nextId = skinSelect.value;
+    skinSelect.disabled = true;
+    try {
+      const next = await loadSkin(catalog, nextId);
+      game = await call("set_skin", { skinId: nextId });
+      applySkin(next);
+      skinError = null;
+    } catch (error) {
+      skinSelect.value = skin.manifest.id;
+      skinError = `切换皮肤失败：${String(error)}`;
+    } finally {
+      skinSelect.disabled = false;
+      showState();
+    }
+  });
   app.ticker.maxFPS = timing.activeFps;
   app.ticker.add((ticker) => {
     clock += ticker.deltaTime / 60;
@@ -393,19 +310,48 @@ async function start() {
       enemyX = Math.max(enemyFightX, enemyX - timing.enemyWalkPixelsPerSecond * ticker.deltaMS / 1000);
       if (enemyX === enemyFightX) setEnemyMode("ready");
     }
-    drawMachine(machine, clock);
-    drawPile(pile);
-    drawGirl(girl, clock);
-    drawRobot(robot, clock);
-    drawMovingBars(movingBars);
+    machine.texture = animationFrame(skin, "machine", activeProduction === null ? "idle" : "active", clock);
+    machineFx.clear();
+    if (game.tokenRemainder > 0) {
+      machineFx.rect(20, 76, Math.max(1, Math.floor(24 * game.tokenRemainder / rules.tokensPerBar)), 5).fill(skin.colors.progress);
+    }
+    if (activeProduction !== null && productionProgress < 0.5) {
+      const x = Math.round(-4 + productionProgress * 58);
+      machineFx.rect(x, 58, 5, 5).fill(skin.colors.token);
+      machineFx.rect(x + 1, 59, 3, 3).fill(0xeaffcf);
+    }
+    const bars = Math.min(pileCount(), display.maxPileBars);
+    pileBars.forEach((bar, index) => {
+      bar.visible = index < bars;
+      if (!bar.visible) return;
+      const row = Math.floor(index / 3);
+      const column = index % 3;
+      bar.position.set(65 + column * 11 + (row % 2 ? 4 : 0), 88 - row * 7);
+    });
+    girl.texture = animationFrame(skin, "girl", phase, clock);
+    girl.y = 101 + (phase === "idle" ? Math.sin(clock * 3) * 1.2 : 0);
+    robot.texture = animationFrame(skin, "robot", enemyMode === "defeated" ? "defeated" : phase === "hit" ? "hit" : enemyMode, clock);
+    const stride = enemyMode === "entering" ? Math.round(Math.sin(clock * 16) * 3) : 0;
+    robot.position.set(Math.round(enemyX), 101 + (phase === "hit" ? Math.sin(clock * 55) * 2 : enemyMode === "entering" ? Math.abs(stride) * 0.4 : Math.sin(clock * 2) * 0.5));
+    robot.alpha = enemyMode === "defeated" ? 0.55 : 1;
+    robot.scale.y = enemyMode === "defeated" ? 0.75 : 1;
+    producedBar.visible = activeProduction !== null && activeProduction > 0 && productionProgress >= 0.5;
+    if (producedBar.visible) {
+      const progress = (productionProgress - 0.5) * 2;
+      producedBar.position.set(Math.round(54 + progress * 20), Math.round(76 + progress * 8));
+    }
+    takenBar.visible = phase === "take" || phase === "eat";
+    if (phase === "take") {
+      const eased = takeProgress * takeProgress * (3 - 2 * takeProgress);
+      takenBar.position.set(Math.round(78 + eased * 43), Math.round(79 - eased * 17));
+    } else if (phase === "eat") takenBar.position.set(121, 62);
     beam.clear();
     if (phase === "beam") {
-      beam.rect(166, 69, 56, 3).fill(0x8df9df);
+      beam.rect(166, 69, 56, 3).fill(skin.colors.beam);
       beam.rect(166, 70, 62, 1).fill(0xffffff);
       beam.circle(225, 70, 6).fill(0xffeeab);
     }
   });
-  try { game = await call("get_game_state"); } catch (error) { game.lastError = String(error); }
   showState();
   await refresh(false);
   if (native) setInterval(() => { void refresh(); }, timing.usageRefreshMs);
