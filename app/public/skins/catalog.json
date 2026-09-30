@@ -1,5 +1,5 @@
 {
-  "defaultSkin": "mint",
+  "defaultSkin": "concept",
   "skins": [
     { "id": "mint", "name": "薄荷机房" },
     { "id": "peach", "name": "蜜桃终端" },

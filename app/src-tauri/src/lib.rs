@@ -48,7 +48,7 @@ struct GameState {
 }
 
 fn default_true() -> bool { true }
-fn default_skin_id() -> String { "mint".to_string() }
+fn default_skin_id() -> String { "concept".to_string() }
 
 impl Default for GameState {
     fn default() -> Self {
@@ -505,11 +505,11 @@ mod tests {
     }
 
     #[test]
-    fn old_save_uses_default_skin_and_selection_persists() {
+    fn old_save_uses_illustration_skin_and_selection_persists() {
         let mut old = serde_json::to_value(GameState::default()).unwrap();
         old.as_object_mut().unwrap().remove("skinId");
         let mut game: GameState = serde_json::from_value(old).unwrap();
-        assert_eq!(game.skin_id, "mint");
+        assert_eq!(game.skin_id, "concept");
         game.skin_id = "peach".to_string();
         let path = temporary_path("skin");
         save_game(&path, &game).unwrap();

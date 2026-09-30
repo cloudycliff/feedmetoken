@@ -1,6 +1,6 @@
 [package]
 name = "feed-me-token"
-version = "0.1.0"
+version = "0.1.1"
 description = "A Codex powered desktop pet game"
 authors = ["Feed Me Token contributors"]
 edition = "2021"

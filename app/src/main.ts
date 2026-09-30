@@ -47,7 +47,7 @@ let game: GameState = {
   connected: native,
   alwaysOnTop: true,
   muted: true,
-  skinId: "mint",
+  skinId: "concept",
 };
 let phase: Phase = "idle";
 let phaseElapsedMs = 0;
